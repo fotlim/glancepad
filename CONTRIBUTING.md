@@ -16,6 +16,14 @@ powershell -ExecutionPolicy Bypass -File .\start_monitor.ps1 -NoBrowser
 调界面时不用每次都开 kiosk，普通浏览器窗口改窗口尺寸就能看到自适应效果；
 按 `F12` 改 CSS 更快。
 
+想测安装脚本（会真的复制文件、写注册表自启项，测完记得卸载）：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\install.ps1 -Dir "$env:TEMP\glancepad_test" -Autostart no -NoPrompt -NoDesktop
+# 测完
+powershell -ExecutionPolicy Bypass -File "$env:TEMP\glancepad_test\install.ps1" -Dir "$env:TEMP\glancepad_test" -Uninstall
+```
+
 ## 代码结构约定
 
 - **数据采集层**在 `sensors/`，每个模块对外只暴露 `read()` / `status()` 两个函数，

@@ -80,6 +80,99 @@ def run_ps(args, wait=False):
     return 0
 
 
+# ------------------------------------------------- 开机自启 / 桌面快捷方式
+APP_KEY = "GlancePad"           # 注册表 Run 项名
+RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
+LNK_NAME = "副屏监控.lnk"
+
+
+def _run_key_path():
+    import winreg
+    return winreg.HKEY_CURRENT_USER, RUN_KEY
+
+
+def autostart_command():
+    """返回写进 Run 项的完整命令行"""
+    exe = sys.executable or ""
+    d = os.path.dirname(exe)
+    pw = os.path.join(d, "pythonw.exe")
+    if not os.path.isfile(pw):
+        pw = exe
+    return '"%s" "%s"' % (pw, os.path.join(ROOT, "launcher.pyw"))
+
+
+def autostart_enabled():
+    try:
+        import winreg
+        h, sub = _run_key_path()
+        with winreg.OpenKey(h, sub, 0, winreg.KEY_READ) as k:
+            try:
+                v, _ = winreg.QueryValueEx(k, APP_KEY)
+                return bool(v)
+            except FileNotFoundError:
+                return False
+    except Exception:
+        return False
+
+
+def set_autostart(flag):
+    """开启/关闭开机自启，返回 (ok, 说明)"""
+    try:
+        import winreg
+        h, sub = _run_key_path()
+        with winreg.CreateKeyEx(h, sub, 0, winreg.KEY_SET_VALUE) as k:
+            if flag:
+                winreg.SetValueEx(k, APP_KEY, 0, winreg.REG_SZ, autostart_command())
+                return True, "已开启开机自启"
+            try:
+                winreg.DeleteValue(k, APP_KEY)
+            except FileNotFoundError:
+                pass
+            return True, "已关闭开机自启"
+    except Exception as e:
+        return False, "注册表操作失败：%r" % (e,)
+
+
+def desktop_dir():
+    for p in (os.path.join(os.environ.get("USERPROFILE", ""), "Desktop"),
+              os.path.join(os.environ.get("USERPROFILE", ""), "OneDrive", "Desktop")):
+        if p and os.path.isdir(p):
+            return p
+    return None
+
+
+def create_desktop_shortcut():
+    """用 WScript.Shell 建桌面 .lnk，返回 (ok, 路径或错误)"""
+    desk = desktop_dir()
+    if not desk:
+        return False, "找不到桌面目录"
+    lnk = os.path.join(desk, LNK_NAME)
+    ico = os.path.join(ROOT, "static", "glancepad.ico")
+    exe = sys.executable or ""
+    pw = os.path.join(os.path.dirname(exe), "pythonw.exe")
+    if not os.path.isfile(pw):
+        pw = exe
+    ps = (
+        "$s=New-Object -ComObject WScript.Shell;"
+        "$l=$s.CreateShortcut('%s');"
+        "$l.TargetPath='%s';"
+        "$l.Arguments='\"%s\"';"
+        "$l.WorkingDirectory='%s';"
+        "$l.Description='副屏监控 GlancePad';"
+        "%s"
+        "$l.Save()"
+    ) % (lnk.replace("'", "''"), pw.replace("'", "''"),
+         os.path.join(ROOT, "launcher.pyw").replace("'", "''"),
+         ROOT.replace("'", "''"),
+         ("$l.IconLocation='%s,0';" % ico.replace("'", "''")) if os.path.isfile(ico) else "")
+    r = subprocess.run(["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass",
+                        "-Command", ps],
+                       creationflags=NO_WIN, capture_output=True)
+    if r.returncode == 0 and os.path.isfile(lnk):
+        return True, lnk
+    return False, (r.stderr or b"").decode("mbcs", "ignore")[:200] or "创建失败"
+
+
 def icon_files():
     try:
         return sorted([f for f in os.listdir(ICONS)
@@ -326,6 +419,36 @@ class SettingsWindow:
                  bg="#1b242b", fg="#6d8296", anchor="w").grid(
             row=5, column=0, columnspan=3, padx=16, pady=(2, 0), sticky="w")
 
+        # ---------------- Tab3: 系统（开机自启 / 快捷方式）
+        t3 = tk.Frame(nb, bg="#1b242b")
+        nb.add(t3, text="  系统  ")
+
+        self.v_auto = tk.BooleanVar(value=autostart_enabled())
+        row0 = tk.Frame(t3, bg="#1b242b")
+        row0.pack(fill="x", padx=16, pady=(14, 4))
+        tk.Checkbutton(row0, text="开机自动启动（登录后在托盘待命，不弹窗、不占任务栏）",
+                       variable=self.v_auto, bg="#1b242b", fg="#cfe0ee",
+                       selectcolor="#131a20", activebackground="#1b242b",
+                       activeforeground="#4fd1c5", relief="flat", anchor="w",
+                       command=self.apply_autostart).pack(side="left")
+        self.lb_auto = tk.Label(t3, text="", bg="#1b242b", fg="#6d8296", anchor="w")
+        self.lb_auto.pack(fill="x", padx=16)
+
+        tk.Frame(t3, bg="#26333d", height=1).pack(fill="x", padx=16, pady=14)
+
+        row1 = tk.Frame(t3, bg="#1b242b")
+        row1.pack(fill="x", padx=16)
+        tk.Button(row1, text="创建桌面快捷方式", command=self.make_shortcut,
+                  bg="#26333d", fg="#cfe0ee", relief="flat",
+                  padx=16, pady=5).pack(side="left")
+        self.lb_lnk = tk.Label(row1, text="", bg="#1b242b", fg="#6d8296")
+        self.lb_lnk.pack(side="left", padx=12)
+
+        tk.Label(t3, text="提示：开机自启只写当前用户的注册表 Run 项，不需要管理员权限；\n"
+                          "      随时勾掉这里就是取消。卸载请运行安装目录下的 install.ps1 -Uninstall。",
+                 bg="#1b242b", fg="#6d8296", justify="left", anchor="w").pack(
+            fill="x", padx=16, pady=(16, 0))
+
         # ---------------- 底部按钮
         foot = tk.Frame(w, bg="#131a20")
         foot.pack(fill="x", side="bottom")
@@ -394,6 +517,23 @@ class SettingsWindow:
         self._fill_tree()
         self.tv.selection_set(str(j))
         self.tv.see(str(j))
+
+    # ---- 系统
+    def apply_autostart(self):
+        want = bool(self.v_auto.get())
+        ok, msg = set_autostart(want)
+        if ok:
+            self.lb_auto.config(text=msg, fg="#57d98a")
+        else:
+            self.v_auto.set(not want)
+            self.lb_auto.config(text=msg, fg="#e05c5c")
+
+    def make_shortcut(self):
+        ok, msg = create_desktop_shortcut()
+        if ok:
+            self.lb_lnk.config(text="已创建：" + msg, fg="#57d98a")
+        else:
+            self.lb_lnk.config(text="失败：" + str(msg), fg="#e05c5c")
 
     # ---- 保存
     def save(self):
@@ -517,8 +657,23 @@ def main():
         import webbrowser
         webbrowser.open(URL)
 
+    def do_toggle_auto():
+        ok, msg = set_autostart(not autostart_enabled())
+        logerr("toggle autostart: %s %s" % (ok, msg))
+        refresh_tray()
+
+    def do_shortcut():
+        ok, msg = create_desktop_shortcut()
+        try:
+            icon.notify(msg if ok else ("创建失败：" + str(msg)), "桌面快捷方式")
+        except Exception:
+            pass
+
     def tray_text(item=None):
         return ("监控运行中" if server_alive() else "监控未运行")
+
+    def tray_auto(item=None):
+        return ("取消开机自启" if autostart_enabled() else "开机自启")
 
     img = make_tray_image()
     menu = pystray.Menu(
@@ -530,6 +685,8 @@ def main():
         pystray.Menu.SEPARATOR,
         pystray.MenuItem("设置…", lambda: do_open()),
         pystray.MenuItem("打开监控页面", lambda: do_web()),
+        pystray.MenuItem(tray_auto, lambda: threading.Thread(target=do_toggle_auto, daemon=True).start()),
+        pystray.MenuItem("创建桌面快捷方式", lambda: threading.Thread(target=do_shortcut, daemon=True).start()),
         pystray.Menu.SEPARATOR,
         pystray.MenuItem("退出", lambda: do_quit()),
     )

@@ -2,6 +2,11 @@
 
 > 一块闲置的竖屏，变成桌面上最顺眼的硬件仪表盘。
 
+![version](https://img.shields.io/badge/version-1.0.1-4fd1c5)
+![platform](https://img.shields.io/badge/platform-Windows%2010%20%7C%2011-5b9dff)
+![python](https://img.shields.io/badge/python-3.9%2B-9a7dff)
+![license](https://img.shields.io/badge/license-MIT-57d98a)
+
 **GlancePad** 是一款 Windows 桌面监控面板，专门为**竖屏副屏**设计（1080×1920 / 设计稿 864×1536）。
 暗色毛玻璃风格，CPU / GPU / 内存 / 存储 / 网络 / 天气 / 音乐播放器 / 快捷启动 Dock 一屏看全，
 自动适配任意分辨率，横屏则自动切三列布局。
@@ -41,13 +46,36 @@
 
 ## 快速开始
 
+### 一键安装（推荐）
+
+不想碰命令行就用安装脚本，它会复制程序、建桌面快捷方式、问你要不要开机自启：
+
+```powershell
+# 在解压后的目录里
+powershell -ExecutionPolicy Bypass -File .\install.ps1
+
+# 指定安装目录 + 不问直接决定开机自启
+powershell -ExecutionPolicy Bypass -File .\install.ps1 -Dir "D:\GlancePad" -Autostart yes
+```
+
+装完会得到：
+
+- 程序在 `D:\GlancePad`（默认，可用 `-Dir` 改）
+- 桌面快捷方式「**副屏监控**」，双击 → 托盘出现青绿三角图标
+- **开机自启可选**：安装时问你，之后也能随时在「托盘 → 开机自启」或「设置 → 系统」里勾掉
+- 自动检查 Python 依赖、Chrome、LHM 桥接、PawnIO 驱动，缺什么直接告诉你怎么补
+
+卸载：`.\install.ps1 -Uninstall`（先停监控，再删快捷方式、自启项和安装目录）
+
+> 安装脚本只写**当前用户**的注册表 `HKCU\...\Run`，不需要管理员权限。
+
 ### 环境要求
 
 - **Windows 10 / 11**（用了 `winsdk` / `pycaw` / `winreg` / `ctypes.wintypes`，跨平台跑不了）
 - **Python 3.9+**（推荐 3.11，安装时请勾选 *Add Python to PATH*）
 - **Google Chrome**（用作 kiosk 全屏外壳）
 
-### 三步跑起来
+### 手动三步跑起来
 
 ```powershell
 # 1. 装 Python 依赖
@@ -62,6 +90,9 @@ powershell -ExecutionPolicy Bypass -File .\start_monitor.ps1
 
 脚本会依次：启动 LHM 采集桥 → 启动 Flask 服务（8770）→ 在副屏打开 kiosk 全屏窗口 →
 启动置顶守护 → 驻留托盘图标。
+
+> **全屏窗口不会占任务栏**：置顶守护会顺手给 kiosk 窗口加上 `WS_EX_TOOLWINDOW`，
+> 所以任务栏里不会留下 Chrome 图标和缩略图预览。窗口重建后 2 秒内会自动补回。
 
 > **想先看看效果？** 只起服务：`.\start_monitor.ps1 -NoBrowser`，
 > 然后浏览器打开 <http://127.0.0.1:8770/>。
@@ -159,15 +190,17 @@ AIDA64 的界面是 Delphi VCL 全自绘，没有任何可靠的 UI 自动化入
 
 ```
 glancepad/
+├─ install.ps1             安装/卸载：复制到安装目录 + 桌面快捷方式 + 可选开机自启
 ├─ app.py                  Flask 服务（8770）
 │                            /  /api/snapshot  /api/stream(SSE)  /api/sources
 │                            /api/media  /api/media/control  /api/media/volume
 │                            /api/apps  /api/apps/version  /api/launch  /api/settings
 ├─ launcher.pyw            托盘程序兼设置程序（pystray + tkinter）
 ├─ start_monitor.ps1       一键启动：LHM 桥 → Flask → kiosk → 置顶守护 → 托盘
-├─ keep_top.ps1            置顶守护：每 2 秒抢回最前，防 Topmost 窗口遮挡
+├─ keep_top.ps1            置顶守护：每 2 秒抢回最前 + 摘掉任务栏图标
 ├─ settings.json           城市/经纬度/Dock 应用（首次运行自动生成，不入库）
 ├─ requirements.txt        Python 依赖
+├─ VERSION                 版本号
 ├─ sensors/
 │  ├─ aida64.py            AIDA64 共享内存 + 注册表双通道
 │  ├─ lhm.py               LibreHardwareMonitor 桥接（按 sensor id 精确映射）
@@ -178,6 +211,7 @@ glancepad/
 │  ├─ index.html           布局骨架
 │  ├─ style.css            毛玻璃暗色主题 + 双设计稿自适应缩放
 │  ├─ app.js               SSE 前端、曲线绘制、Dock、播放器
+│  ├─ glancepad.ico        应用图标（快捷方式/托盘用）
 │  └─ icons/               Dock 图标（64×64 PNG + _default.svg 兜底）
 ├─ tools/
 │  ├─ setup_lhm.ps1        下载 LHM + 编译采集桥（一键）
@@ -252,6 +286,17 @@ chrome --headless=new --disable-gpu --hide-scrollbars --force-device-scale-facto
 访问 `http://127.0.0.1:8770/?static=1&debug=1`，页面底部会输出每个卡片和关键元素的
 `getBoundingClientRect()`（包在 `DBGJSON...ENDDBG` 之间），配合
 `chrome --dump-dom` 抓出来解析，比看截图猜像素快得多。
+
+**Q：任务栏里多了一个 Chrome 图标和缩略图预览？**
+kiosk 窗口默认会占任务栏。`keep_top.ps1` 每 2 秒会给窗口补上 `WS_EX_TOOLWINDOW`
+并清掉 `WS_EX_APPWINDOW`，这样它就不出现在任务栏、也没有缩略图预览了。
+Chrome 重建窗口后 2 秒内会自动恢复，不需要手动干预。
+
+**Q：怎么让它开机自启？不想要了怎么关？**
+安装脚本会问你一次（`-Autostart yes|no`）。装完之后两种改法：
+托盘右键 →「开机自启」勾选/取消；或 设置窗口 →「系统」标签页 → 勾选框。
+本质是写当前用户的 `HKCU\Software\Microsoft\Windows\CurrentVersion\Run\GlancePad`，
+不需要管理员权限，也不改动任何系统服务。
 
 **Q：主板温度 / 磁盘温度 / 风扇转速一直是 `--`？**
 LHM 需要能识别主板的 SuperIO 芯片。部分主板（比如开发测试用的 `X5`）识别不到，这不是配置问题，

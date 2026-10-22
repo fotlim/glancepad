@@ -134,10 +134,15 @@ public class WinApi {
     [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr h, out uint ppid);
     [DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr h, IntPtr after, int x, int y, int cx, int cy, uint flags);
     [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h, int cmd);
+    [DllImport("user32.dll")] public static extern int GetWindowLong(IntPtr h, int idx);
+    [DllImport("user32.dll")] public static extern int SetWindowLong(IntPtr h, int idx, int val);
     public static readonly IntPtr HWND_TOPMOST   = new IntPtr(-1);
     public static readonly IntPtr HWND_NOTOPMOST = new IntPtr(-2);
     public const uint SWP_NOSIZE = 0x0001, SWP_NOMOVE = 0x0002, SWP_SHOWWINDOW = 0x0040;
     public const int SW_RESTORE = 9;
+    public const int GWL_EXSTYLE = -20;
+    public const int WS_EX_TOOLWINDOW = 0x00000080;
+    public const int WS_EX_APPWINDOW  = 0x00040000;
 }
 "@
 }
@@ -167,6 +172,15 @@ function Set-TopMost {
     $target = if ($Off) { [WinApi]::HWND_NOTOPMOST } else { [WinApi]::HWND_TOPMOST }
     $n = 0
     foreach ($h in (Get-WindowHandlesByPid -ProcId $ProcId)) {
+        # 顺手摘掉任务栏图标（WS_EX_TOOLWINDOW，清 WS_EX_APPWINDOW）
+        # 否则 kiosk 窗口会在任务栏留一个占位和缩略图预览
+        if (-not $Off) {
+            $ex = [WinApi]::GetWindowLong($h, [WinApi]::GWL_EXSTYLE)
+            $want = ($ex -bor [WinApi]::WS_EX_TOOLWINDOW) -band (-bnot [WinApi]::WS_EX_APPWINDOW)
+            if ($ex -ne $want) {
+                [WinApi]::SetWindowLong($h, [WinApi]::GWL_EXSTYLE, $want) | Out-Null
+            }
+        }
         [WinApi]::SetWindowPos($h, $target, 0, 0, 0, 0,
             ([WinApi]::SWP_NOSIZE -bor [WinApi]::SWP_NOMOVE -bor [WinApi]::SWP_SHOWWINDOW)) | Out-Null
         $n++

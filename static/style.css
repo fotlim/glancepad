@@ -95,7 +95,12 @@ body.portrait .canvas{
 body.landscape .canvas{
   width:1536px;height:864px;
   grid-template-columns:1.12fr 1fr 1.02fr;
-  grid-template-rows:0.50fr 1.58fr 1.06fr 1.14fr 0.56fr;
+  /* row2（内存/温度/播放器）原来只占 1.14fr → 每个子卡只有 90px 高，
+     装不下 70px 圆环 + 底部「共/保留/插槽」，圆环直接压住文字。
+     这里把 row2 加到 1.86fr，让 mem/temp 各约 142px、播放器 296px，
+     cpu/gpu 行给到 1.48fr（GPU 卡有 4 条 ubar + 显存条，1.34fr 会溢出 20px），
+     多出来的高度从 head / wifi / dock 挤，总 fr 仍是 5.12 不变。 */
+  grid-template-rows:0.38fr 1.54fr 0.90fr 1.86fr 0.46fr;
   grid-template-areas:
     "head  head  head"
     "cpu   gpu   chart"
@@ -160,15 +165,16 @@ body.landscape .canvas{
   gap:14px;
 }
 .clock{
-  font-size:clamp(34px,5.4vh,50px);
-  font-weight:200;
-  letter-spacing:2px;
+  /* 放大 + 加粗：竖屏 864 宽设计稿里 64px，观感更饱满；小视口自动缩回 */
+  font-size:clamp(44px,6.4vh,64px);
+  font-weight:700;
+  letter-spacing:1.5px;
   line-height:1;
   font-variant-numeric:tabular-nums;
-  text-shadow:0 2px 24px rgba(120,200,255,0.18);
+  text-shadow:0 2px 28px rgba(120,200,255,0.26);
 }
 .date{
-  font-size:12px;color:var(--text-dim);margin-top:5px;letter-spacing:1px;
+  font-size:14.5px;color:var(--text-dim);margin-top:4px;letter-spacing:1px;
 }
 
 /* 顶部天气（取代原来的网速区） */
@@ -178,16 +184,16 @@ body.landscape .canvas{
   min-width:0;
 }
 .wx-main{
-  display:flex;align-items:center;gap:8px;
+  display:flex;align-items:center;gap:9px;
   font-variant-numeric:tabular-nums;
 }
-.wx-icon{font-size:24px;line-height:1;filter:drop-shadow(0 0 10px rgba(255,200,120,0.35));}
-.wx-temp b{font-size:26px;font-weight:600;line-height:1;}
-.wx-temp i{font-style:normal;font-size:12px;color:var(--text-dim);margin-left:1px;}
-.wx-text{font-size:13px;color:var(--text-dim);letter-spacing:1px;}
+.wx-icon{font-size:30px;line-height:1;filter:drop-shadow(0 0 12px rgba(255,200,120,0.4));}
+.wx-temp b{font-size:34px;font-weight:700;line-height:1;}
+.wx-temp i{font-style:normal;font-size:14px;color:var(--text-dim);margin-left:1px;}
+.wx-text{font-size:15.5px;color:var(--text-dim);letter-spacing:1px;}
 .wx-sub{
-  font-size:10.5px;color:var(--text-mute);
-  display:flex;align-items:center;gap:5px;flex-wrap:wrap;justify-content:flex-end;
+  font-size:12px;color:var(--text-mute);
+  display:flex;align-items:center;gap:6px;flex-wrap:wrap;justify-content:flex-end;
 }
 .wx-sep{color:rgba(255,255,255,0.18);}
 
@@ -232,6 +238,12 @@ body.landscape .canvas{
   width:100%;text-align:center;font-size:10px;color:var(--text-mute);
   margin-top:3px;letter-spacing:.6px;
 }
+
+/* 小圆环（内存卡）：70px 里塞不下 27px 数字 + %，会被 flex-wrap 折到第二行。
+   这里强制不换行、基线对齐，% 紧贴数字右侧，观感才不散。 */
+.ring-xs .ring-text{flex-wrap:nowrap;align-items:baseline;}
+.ring-xs .ring-text b{font-size:22px;font-weight:700;}
+.ring-xs .ring-text i{font-size:11px;padding-bottom:0;align-self:baseline;}
 
 .stats{
   flex:1;display:grid;

@@ -3,6 +3,30 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.0.1] - 2026-10-22
+
+安装体验与显示细节修复。
+
+### 新增
+
+- **安装脚本 `install.ps1`**：一键装到指定目录（默认 `D:\GlancePad`），自动创建桌面快捷方式「副屏监控」、询问是否开机自启，并在安装前检查 Python 依赖 / Chrome / LHM 桥接 / PawnIO 驱动，缺什么给出具体补装命令。支持 `-Dir` / `-Autostart ask|yes|no` / `-NoPrompt` / `-NoDesktop` / `-Uninstall` / `-KeepSettings`。
+- **可选开机自启**：只写当前用户的 `HKCU\...\Run\GlancePad`，不需要管理员权限。三种开关入口 —— 安装脚本参数、托盘右键「开机自启 / 取消开机自启」、设置窗口新增的「系统」标签页（含勾选框与「创建桌面快捷方式」按钮）。
+- **应用图标** `static/glancepad.ico`（16~256 多尺寸，青绿三角 + 蓝点，与托盘图标一致），桌面快捷方式与托盘共用。
+- **VERSION 文件**。
+
+### 修复
+
+- **任务栏占位**：Chrome kiosk 窗口会在任务栏留下图标和缩略图预览。`keep_top.ps1` 现在每 2 秒给窗口补 `WS_EX_TOOLWINDOW` 并清掉 `WS_EX_APPWINDOW`；`start_monitor.ps1` 的置顶步骤也会做一次。窗口重建后自动恢复，无需手动处理。
+- **横屏布局**（m03305）：`body.landscape .canvas` 的 `grid-template-rows` 原先让 `row2` 只占 1.14fr，内存/温度子卡仅约 90px 高，70px 圆环直接压住底部「共 15.9 GB / 硬件保留 / 插槽」。改为 `0.38fr 1.54fr 0.90fr 1.86fr 0.46fr`，`row2` 拿到 1.86fr（子卡约 111px、播放器 231px），同时保证 GPU 卡（4 条 ubar + 显存条）内容不再溢出 17px。
+- **内存卡百分比 `%` 折行**：`.ring-text` 默认 `flex-wrap: wrap`，70px 的 `.ring-xs` 里 27px 数字 + `%` 会折成两行，`%` 掉到数字下方像误放的标点。新增 `.ring-xs .ring-text{flex-wrap:nowrap;align-items:baseline}` 并单独调小字号（数字 22px / `%` 11px），现在同基线并列。
+- **安装脚本依赖检查**：`python -c @"..."@` 的 here-string 会被 PowerShell 二次解析，抛 `NativeCommandError` 假错误。改为写临时 `.py` 文件再执行。
+
+### 优化
+
+- **顶部时钟放大加粗**（m03330）：`.clock` 改为 `clamp(44px, 6.4vh, 64px)` + `font-weight:700` + 字距 1.5px + 柔和蓝色外发光；日期 12px → 14.5px。
+- **右上角天气放大**：天气图标 24 → 30px、主温度 26 → 34px（加粗）、天气现象 13 → 15.5px、副信息 10.5 → 12px。
+- 安装脚本默认不复制 `assets/` 调试截图目录与 `__pycache__` / `.chrome-profile` / `*.log` / `*.pid`，成品更干净（约 118 个文件 / 17 MB，其中 LHM 桥 11.7 MB）。
+
 ## [1.0.0] - 2026-10-22
 
 首个公开版本。
@@ -40,4 +64,5 @@
 - AIDA64 通道需要手动在「设置 → 外部应用程序」里勾选「允许共享内存」或「允许将监测数据写入注册表」；AIDA64 的界面是 Delphi 自绘，无法可靠自动化，故本版本不做自动开启。
 - 歌词中文匹配依赖 lrclib / 网易云曲库，冷门歌曲可能搜不到。
 
+[1.0.1]: https://github.com/fotlim/glancepad/releases/tag/v1.0.1
 [1.0.0]: https://github.com/fotlim/glancepad/releases/tag/v1.0.0
