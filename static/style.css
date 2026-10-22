@@ -224,27 +224,35 @@ body.landscape .canvas{
 .ring-sm{width:104px;height:104px;}
 .ring-xs{width:70px;height:70px;}
 
-/* 圆环中央的文字层。
-   注意：这里绝对不能用 flex-wrap:wrap —— 一旦折成两行（「数字%」+「占用」），
-   多行 flex 的 align-content 默认是 stretch，两行各摊一半高度，数字那块就被顶到
-   上半区，看起来比环心高 20 多像素（CPU/GPU 大圆环 v1.0.2 之前就是这样）。
-   行内小标签改成绝对定位压在环底，数字+% 才能真正落在环心。 */
+/* 圆环中央的文字层：竖排两行 —— 第一行「数字 + %」，第二行小标签「占用 / 核心」。
+   注意：这里绝对不能用 flex-wrap:wrap —— 一旦折成两行，多行 flex 的 align-content
+   默认是 stretch，两行各摊一半高度，数字那块就被顶到上半区。
+   所以显式 flex-direction:column + align-content:center，两行作为一个整体垂直居中；
+   标签不用绝对定位压在环底（那样离数字太远，中间空一大块）。 */
 .ring-text{
   position:absolute;inset:0;
-  display:flex;align-items:center;justify-content:center;
+  display:flex;flex-direction:column;
+  align-items:center;justify-content:center;
+  align-content:center;
   flex-wrap:nowrap;
+  gap:2px;
   font-variant-numeric:tabular-nums;
+  line-height:1;
+}
+/* 数字与 % 同一基线，作为「一行」 */
+.ring-text .rn{
+  display:flex;align-items:baseline;justify-content:center;
+  line-height:1;
 }
 .ring-text b{
   font-size:27px;font-weight:600;line-height:1;
 }
 .ring-text i{
   font-style:normal;font-size:12px;color:var(--text-dim);margin-left:1px;
-  line-height:1;align-self:center;transform:translateY(5px);
+  line-height:1;
 }
 .ring-text span{
-  position:absolute;left:0;right:0;bottom:9px;
-  text-align:center;font-size:10px;color:var(--text-mute);
+  font-size:10px;color:var(--text-mute);
   letter-spacing:.6px;line-height:1;
 }
 
@@ -257,7 +265,7 @@ body.landscape .canvas{
 .ring-xs .ring-text b{font-size:22px;font-weight:700;line-height:1;}
 .ring-xs .ring-text i{
   font-size:11px;line-height:1;padding-bottom:0;
-  align-self:center;transform:translateY(3px);
+  transform:translateY(3px);
 }
 
 .stats{
