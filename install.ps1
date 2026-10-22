@@ -175,9 +175,29 @@ if (-not ($chromeCands | Where-Object { Test-Path $_ })) {
 Step "[2/5] 复制程序到 $Dir"
 if (-not (Test-Path $Dir)) { New-Item -ItemType Directory -Path $Dir -Force | Out-Null }
 
+# 覆盖安装前先停掉旧版本。不这么做的话，正在跑的 lhm_bridge.exe 会锁住
+# tools\LHM\*.dll，复制直接抛 IOException，安装半途而废。
+$oldStop = Join-Path $Dir "start_monitor.ps1"
+if (Test-Path $oldStop) {
+  $running = $false
+  try {
+    $st = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $oldStop -Status 2>&1 | Out-String
+    if ($st -match "服务运行中|监控窗口已开|托盘程序:\s*运行中") { $running = $true }
+  } catch {}
+  if ($running) {
+    Info "检测到旧版本正在运行，先停掉以便覆盖文件…"
+    try { & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $oldStop -Quit 2>&1 | Out-Null } catch {}
+    for ($i = 0; $i -lt 20; $i++) {
+      Start-Sleep -Milliseconds 300
+      if (-not (Get-Process lhm_bridge -ErrorAction SilentlyContinue)) { break }
+    }
+  }
+}
+
 $skipDirs = @(".git", "__pycache__", ".chrome-profile", "node_modules", "assets")
 $skipFiles = @("settings.json")   # 老设置不覆盖
 $copied = 0
+$script:failed = @()
 function CopyTree($from, $to) {
   Get-ChildItem -Path $from -Force | ForEach-Object {
     $name = $_.Name
@@ -190,13 +210,26 @@ function CopyTree($from, $to) {
       if ($skipFiles -contains $name) { return }
       if ($_.Extension -in @(".log", ".pid")) { return }
       if ($name -like "*.log.err") { return }
-      Copy-Item $_.FullName (Join-Path $to $name) -Force
-      $script:copied++
+      # 正在运行的进程会锁住 dll/exe（比如 lhm_bridge 占着 LHM 目录），
+      # 单个文件失败不能让整个安装中断，记下来最后统一提示。
+      try {
+        Copy-Item $_.FullName (Join-Path $to $name) -Force -ErrorAction Stop
+        $script:copied++
+      } catch {
+        $script:failed += $name
+      }
     }
   }
 }
 CopyTree $SRC $Dir
 Ok "已复制 $copied 个文件"
+if ($script:failed.Count -gt 0) {
+  Warn "有 $($script:failed.Count) 个文件被占用没覆盖上（多为 LHM 桥接 dll）"
+  Info ("  被占用: " + (($script:failed | Select-Object -First 5) -join ", ") + $(if($script:failed.Count -gt 5){" ..."}else{""}))
+  Info "  先停监控再装一次即可全部更新："
+  Info "    powershell -ExecutionPolicy Bypass -File `"$Dir\start_monitor.ps1`" -Quit"
+  Info "    powershell -ExecutionPolicy Bypass -File `"$PSCommandPath`" -Dir `"$Dir`" -NoPrompt"
+}
 
 # 保留用户原有 settings.json
 $sNew = Join-Path $Dir "settings.json"
