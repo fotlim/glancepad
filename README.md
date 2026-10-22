@@ -158,7 +158,7 @@ AIDA64 的界面是 Delphi VCL 全自绘，没有任何可靠的 UI 自动化入
 ## 目录结构
 
 ```
-subscreen-monitor/
+glancepad/
 ├─ app.py                  Flask 服务（8770）
 │                            /  /api/snapshot  /api/stream(SSE)  /api/sources
 │                            /api/media  /api/media/control  /api/media/volume
