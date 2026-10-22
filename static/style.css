@@ -240,10 +240,16 @@ body.landscape .canvas{
 }
 
 /* 小圆环（内存卡）：70px 里塞不下 27px 数字 + %，会被 flex-wrap 折到第二行。
-   这里强制不换行、基线对齐，% 紧贴数字右侧，观感才不散。 */
-.ring-xs .ring-text{flex-wrap:nowrap;align-items:baseline;}
-.ring-xs .ring-text b{font-size:22px;font-weight:700;}
-.ring-xs .ring-text i{font-size:11px;padding-bottom:0;align-self:baseline;}
+   注意：这里绝对不能用 align-items:baseline —— flex 的基线对齐会把整行贴到
+   cross-start，文字就顶到圆环上沿去了（v1.0.1 的 71% 就是这么跑到环顶上的）。
+   必须 align-items:center 让「数字+%」整体垂直居中，% 再用 translateY 微沉一点点，
+   与数字视觉基线上对齐。 */
+.ring-xs .ring-text{flex-wrap:nowrap;align-items:center;justify-content:center;}
+.ring-xs .ring-text b{font-size:22px;font-weight:700;line-height:1;}
+.ring-xs .ring-text i{
+  font-size:11px;line-height:1;padding-bottom:0;
+  align-self:center;transform:translateY(3px);
+}
 
 .stats{
   flex:1;display:grid;

@@ -3,6 +3,12 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.0.2] - 2026-10-22
+
+### 修复
+
+- **内存卡百分比跑到圆环上沿**：v1.0.1 用 `align-items:baseline` 修 `%` 折行，但 flex 的基线对齐会把整行贴到 cross-start，导致「75%」整块顶在 70px 圆环的上边缘，看着像压在环上、明显不居中。改为 `align-items:center` + `justify-content:center`，数字与 `%` 整体垂直居中，`%` 再用 `translateY(3px)` 微沉到数字基线位置。实测（副屏实拍，2x DPR）：圆环竖直范围 1160–1239px、中心 1199.5，文字竖直范围 1190–1209、中心 1199.5，**偏移 0**（修复前偏上约 25 CSS px）。
+
 ## [1.0.1] - 2026-10-22
 
 安装体验与显示细节修复。

@@ -2,7 +2,7 @@
 
 > 一块闲置的竖屏，变成桌面上最顺眼的硬件仪表盘。
 
-![version](https://img.shields.io/badge/version-1.0.1-4fd1c5)
+![version](https://img.shields.io/badge/version-1.0.2-4fd1c5)
 ![platform](https://img.shields.io/badge/platform-Windows%2010%20%7C%2011-5b9dff)
 ![python](https://img.shields.io/badge/python-3.9%2B-9a7dff)
 ![license](https://img.shields.io/badge/license-MIT-57d98a)
