@@ -1,0 +1,41 @@
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# ---- 运行时产物 ----
+*.log
+*.log.err
+*.log.out
+*.pid
+.monitor.pid
+.keeper.pid
+.launcher.pid
+.bridge.pid
+
+# Chrome kiosk 的独立用户目录（含 Cookies / Web Data，绝不入库）
+.chrome-profile/
+
+# 本机配置：含真实程序路径 / 城市经纬度，每人不同
+settings.json
+
+# ---- 第三方二进制：不放仓库，用 tools/setup_lhm.ps1 自动下载并编译 ----
+tools/LHM/
+tools/LHM094/
+*.exe
+*.dll
+*.pdb
+*.sys
+
+# ---- 调试中间产物 ----
+tools/btnmap.json
+tools/btnmap2.json
+shots/
+*.tmp
+.DS_Store
+Thumbs.db
+
+# 本地截图产物（正式截图放 docs/screenshots/）
+assets/

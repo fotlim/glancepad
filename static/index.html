@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>副屏监控</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<div class="bg"></div>
+<div class="bg-veil"></div>
+
+<div class="stage" id="stage">
+  <div class="canvas" id="canvas">
+
+    <!-- 顶部：时间 / 日期 / 天气 -->
+    <header class="head">
+      <div class="clock-wrap">
+        <div class="clock" id="clock">--:--</div>
+        <div class="date" id="date">--月--日 星期-</div>
+      </div>
+      <div class="weather-box" id="weatherBox">
+        <div class="wx-main">
+          <span class="wx-icon" id="wxIcon">🌡️</span>
+          <span class="wx-temp"><b id="wxTemp">--</b><i>°C</i></span>
+          <span class="wx-text" id="wxText">--</span>
+        </div>
+        <div class="wx-sub">
+          <span id="wxCity">--</span>
+          <span class="wx-sep">·</span>
+          <span id="wxRange">--/--</span>
+          <span class="wx-sep">·</span>
+          <span id="wxHum">湿度 --</span>
+          <span class="wx-sep">·</span>
+          <span id="wxWind">风 --</span>
+        </div>
+      </div>
+    </header>
+
+    <!-- CPU -->
+    <section class="card card-cpu">
+      <div class="card-title">
+        <span class="tag">CPU</span>
+        <span class="chip-name" id="cpuName">CPU</span>
+        <span class="badge" id="cpuSrc">psutil</span>
+      </div>
+      <div class="cpu-body">
+        <div class="ring ring-sm">
+          <svg viewBox="0 0 120 120">
+            <circle class="track" cx="60" cy="60" r="52"></circle>
+            <circle class="bar" id="cpuRing" cx="60" cy="60" r="52"></circle>
+          </svg>
+          <div class="ring-text">
+            <b id="cpuUsage">0</b><i>%</i>
+            <span>占用</span>
+          </div>
+        </div>
+        <div class="stats">
+          <div class="stat"><label>温度</label><b id="cpuTemp">--</b><i>°C</i></div>
+          <div class="stat"><label>频率</label><b id="cpuClock">--</b><i>GHz</i></div>
+          <div class="stat"><label>电压</label><b id="cpuVolt">--</b><i>V</i></div>
+          <div class="stat"><label>功耗</label><b id="cpuPower">--</b><i>W</i></div>
+        </div>
+      </div>
+      <!-- 利用率细分 + 每核占用 -->
+      <div class="util-row">
+        <div class="util-item"><label>用户</label><span class="ubar"><i id="cpuUserBar"></i></span><b id="cpuUser">--</b></div>
+        <div class="util-item"><label>系统</label><span class="ubar"><i id="cpuSysBar"></i></span><b id="cpuSys">--</b></div>
+        <div class="util-item"><label>IO</label><span class="ubar"><i id="cpuIoBar"></i></span><b id="cpuIo">--</b></div>
+      </div>
+      <div class="cores" id="cpuCores"></div>
+    </section>
+
+    <!-- GPU -->
+    <section class="card card-gpu">
+      <div class="card-title">
+        <span class="tag tag-gpu">GPU</span>
+        <span class="chip-name" id="gpuName">GPU</span>
+        <span class="badge" id="gpuSrc">nvidia</span>
+      </div>
+      <div class="cpu-body">
+        <div class="ring ring-sm">
+          <svg viewBox="0 0 120 120">
+            <circle class="track" cx="60" cy="60" r="52"></circle>
+            <circle class="bar bar-gpu" id="gpuRing" cx="60" cy="60" r="52"></circle>
+          </svg>
+          <div class="ring-text">
+            <b id="gpuUsage">0</b><i>%</i>
+            <span>核心</span>
+          </div>
+        </div>
+        <div class="stats">
+          <div class="stat"><label>温度</label><b id="gpuTemp">--</b><i>°C</i></div>
+          <div class="stat"><label>核心</label><b id="gpuClock">--</b><i>MHz</i></div>
+          <div class="stat"><label>功耗</label><b id="gpuPower">--</b><i>W</i></div>
+          <div class="stat"><label>显存</label><b id="gpuVram">--</b><i>GB</i></div>
+        </div>
+      </div>
+      <!-- 四路利用率：核心 / 显存 / 编码 / 解码 -->
+      <div class="util-row">
+        <div class="util-item"><label>核心</label><span class="ubar"><i id="gpuCoreBar"></i></span><b id="gpuCoreU">--</b></div>
+        <div class="util-item"><label>显存</label><span class="ubar"><i id="gpuMemBar"></i></span><b id="gpuMemU">--</b></div>
+        <div class="util-item"><label>编码</label><span class="ubar"><i id="gpuEncBar"></i></span><b id="gpuEncU">--</b></div>
+        <div class="util-item"><label>解码</label><span class="ubar"><i id="gpuDecBar"></i></span><b id="gpuDecU">--</b></div>
+      </div>
+      <div class="gpu-extra">
+        <div class="ex"><label>热点</label><b id="gpuHot">--</b><i>°C</i></div>
+        <div class="ex"><label>显存负载</label><b id="gpuMemLoad">--</b><i>%</i></div>
+        <div class="ex"><label>核心电压</label><b id="gpuVolt">--</b><i>V</i></div>
+      </div>
+      <!-- 显存条 + 显存频率：把 GPU 卡下半部分填满 -->
+      <div class="vram-box">
+        <div class="vram-head">
+          <span>显存</span>
+          <span class="vram-num"><b id="vramUsed">--</b> / <i id="vramTotal">--</i> GB</span>
+        </div>
+        <div class="vram-bar"><i id="vramBar"></i></div>
+        <div class="vram-foot">
+          <span>占用 <b id="vramPct">--</b>%</span>
+          <span>频率 <b id="gpuMemClock">--</b> MHz</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- 性能监控曲线 -->
+    <section class="card card-chart">
+      <div class="card-title">
+        <span class="tag tag-chart">性能监控</span>
+        <div class="legend">
+          <span><i class="lg lg-cpu"></i>CPU</span>
+          <span><i class="lg lg-gpu"></i>GPU</span>
+          <span><i class="lg lg-mem"></i>内存</span>
+        </div>
+      </div>
+      <canvas id="chart"></canvas>
+    </section>
+
+    <!-- WiFi / 网络 -->
+    <section class="card card-wifi">
+      <div class="card-title">
+        <span class="tag tag-wifi">网络</span>
+        <span class="chip-name" id="wifiDesc">--</span>
+        <span class="net-speed">
+          <span class="net-dot down"></span><b id="netDown">0.0</b><i>Mbps</i>
+          <span class="net-dot up"></span><b id="netUp">0.0</b><i>Mbps</i>
+        </span>
+      </div>
+      <div class="wifi-body">
+        <ul class="kv-list" id="wifiList">
+          <li><span class="k">适配器名称</span><span class="v" id="wifiAdapter">--</span></li>
+          <li><span class="k">SSID</span><span class="v" id="wifiSsid">--</span></li>
+          <li><span class="k">连接类型</span><span class="v" id="wifiRadio">--</span></li>
+          <li><span class="k">频段 / 信道</span><span class="v" id="wifiBand">--</span></li>
+          <li><span class="k">IPv4 地址</span><span class="v" id="wifiV4">--</span></li>
+          <li><span class="k">IPv6 地址</span><span class="v small" id="wifiV6">--</span></li>
+          <li><span class="k">收发速率</span><span class="v" id="wifiRate">--</span></li>
+          <li class="sig-li">
+            <span class="k">信号强度</span>
+            <span class="v sig-wrap">
+              <span class="sig-bars" id="wifiBars"><i></i><i></i><i></i><i></i></span>
+              <span id="wifiSig">--</span>
+            </span>
+          </li>
+        </ul>
+        <!-- 下载速度折线图 -->
+        <div class="net-chart-wrap">
+          <div class="net-chart-head">
+            <span>下载速度</span>
+            <span class="net-peak">峰值 <b id="netPeak">0.0</b> Mbps</span>
+          </div>
+          <canvas id="netChart"></canvas>
+        </div>
+      </div>
+    </section>
+
+    <!-- 内存 + 温度 + 音乐播放器 -->
+    <div class="row2">
+      <section class="card card-mem">
+        <div class="card-title"><span class="tag tag-mem">内存</span>
+          <span class="chip-name" id="memSpec">--</span></div>
+        <div class="mem-body">
+          <div class="ring ring-xs">
+            <svg viewBox="0 0 120 120">
+              <circle class="track" cx="60" cy="60" r="52"></circle>
+              <circle class="bar bar-mem" id="memRing" cx="60" cy="60" r="52"></circle>
+            </svg>
+            <div class="ring-text">
+              <b id="memUsage">0</b><i>%</i>
+            </div>
+          </div>
+          <div class="mem-grid">
+            <div class="m"><label>已用</label><b id="memUsed">0</b><i>GB</i></div>
+            <div class="m"><label>可用</label><b id="memAvail">0</b><i>GB</i></div>
+            <div class="m"><label>已缓存</label><b id="memCached">0</b><i>GB</i></div>
+            <div class="m"><label>已提交</label><b id="memCommit">0</b><i>GB</i></div>
+            <div class="m"><label>分页池</label><b id="memPaged">0</b><i>GB</i></div>
+            <div class="m"><label>非分页</label><b id="memNonPaged">0</b><i>GB</i></div>
+          </div>
+        </div>
+        <div class="mem-foot">
+          <span>共 <b id="memTotal">0</b> GB</span>
+          <span>硬件保留 <b id="memReserved">0</b> GB</span>
+          <span>插槽 <b id="memSlots">--</b></span>
+        </div>
+      </section>
+
+      <section class="card card-temp">
+        <div class="card-title"><span class="tag tag-temp">温度监控</span></div>
+        <ul class="temp-list" id="tempList">
+          <li class="empty">等待数据…</li>
+        </ul>
+      </section>
+
+      <!-- 音乐播放器控件 -->
+      <section class="card card-player">
+        <div class="card-title">
+          <span class="tag tag-player">音乐</span>
+          <span class="chip-name" id="muApp">--</span>
+          <span class="badge" id="muBadge">待机</span>
+        </div>
+        <div class="mu-body">
+          <div class="mu-meta">
+            <div class="mu-title" id="muTitle">未在播放</div>
+            <div class="mu-artist" id="muArtist">打开网易云 / QQ 音乐放一首歌</div>
+          </div>
+          <div class="mu-bar"><i id="muProg"></i></div>
+          <div class="mu-times"><span id="muPos">0:00</span><span id="muDur">0:00</span></div>
+          <div class="mu-ctrl">
+            <button class="mu-btn" data-act="prev" title="上一首">⏮</button>
+            <button class="mu-btn mu-play" id="muPlay" data-act="toggle" title="播放 / 暂停">▶</button>
+            <button class="mu-btn" data-act="next" title="下一首">⏭</button>
+            <span class="mu-vol">
+              <button class="mu-btn mu-vbtn" id="muMute" title="静音">🔊</button>
+              <input type="range" id="muVol" min="0" max="100" step="1" value="50">
+              <b id="muVolVal">50</b>
+            </span>
+          </div>
+          <div class="mu-lyric" id="muLyricBox">
+            <div class="mu-eq" id="muEq"></div>
+            <div class="ly-prev" id="muLyricPrev"></div>
+            <div class="ly-cur" id="muLyric">♪ 暂无歌词</div>
+            <div class="ly-next" id="muLyricNext"></div>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <!-- 存储 -->
+    <section class="card card-disk">
+      <div class="card-title"><span class="tag tag-disk">存储</span>
+        <span class="badge" id="diskSrc">--</span></div>
+      <div class="disk-grid" id="diskList">
+        <div class="empty">等待数据…</div>
+      </div>
+    </section>
+
+    <!-- 底部：自定义快捷启动 Dock -->
+    <footer class="dock-wrap">
+      <div class="dock" id="dock">
+        <div class="dock-empty">快捷启动项加载中…</div>
+      </div>
+      <div class="dock-uptime" id="uptime">已运行 --</div>
+    </footer>
+
+  </div>
+</div>
+
+<script src="/static/app.js"></script>
+</body>
+</html>
