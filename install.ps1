@@ -11,7 +11,11 @@
     powershell -ExecutionPolicy Bypass -File install.ps1
     powershell -ExecutionPolicy Bypass -File install.ps1 -Dir "D:\Tools\GlancePad"
     powershell -ExecutionPolicy Bypass -File install.ps1 -Autostart yes -NoPrompt
+    powershell -ExecutionPolicy Bypass -File install.ps1 -ResetSettings   # 重置 Dock/城市
     powershell -ExecutionPolicy Bypass -File install.ps1 -Uninstall
+
+  升级：直接重跑即可。默认保留安装目录里已有的 settings.json
+        （Dock 项和天气城市不会丢），只有 -ResetSettings 才会覆盖。
 
   卸载：install.ps1 -Uninstall（会先停掉监控，再删安装目录和快捷方式；不删 D 盘外的任何东西）
 #>
@@ -23,7 +27,8 @@ param(
   [switch]$NoPrompt,
   [switch]$NoDesktop,
   [switch]$Uninstall,
-  [switch]$KeepSettings
+  [switch]$KeepSettings,    # 兼容保留：默认就保留 settings.json，写不写都一样
+  [switch]$ResetSettings    # 用安装包里的 settings.json 覆盖旧的（会丢自定义 Dock）
 )
 
 $ErrorActionPreference = "Stop"
@@ -232,11 +237,22 @@ if ($script:failed.Count -gt 0) {
 }
 
 # 保留用户原有 settings.json
+# 覆盖安装的默认行为就是「保住用户设置」——Dock 项和城市经纬度都在这个文件里，
+# 弄丢了用户得重配一遍，很难受。所以只有显式 -ResetSettings 才会拿安装包里的覆盖。
 $sNew = Join-Path $Dir "settings.json"
 $sOld = Join-Path $SRC "settings.json"
-if ((-not (Test-Path $sNew)) -and (Test-Path $sOld)) {
-  Copy-Item $sOld $sNew -Force
-  Info "已迁移现有 settings.json"
+if ($ResetSettings) {
+  if (Test-Path $sOld) {
+    Copy-Item $sOld $sNew -Force
+    Warn "已用安装包里的 settings.json 覆盖（自定义 Dock 丢失）"
+  }
+} elseif (-not (Test-Path $sNew)) {
+  if (Test-Path $sOld) {
+    Copy-Item $sOld $sNew -Force
+    Info "已迁移现有 settings.json"
+  }
+} else {
+  Info "保留原有 settings.json（Dock 与城市设置不变）"
 }
 
 # 2. 桌面快捷方式

@@ -67,6 +67,16 @@ powershell -ExecutionPolicy Bypass -File .\install.ps1 -Dir "D:\GlancePad" -Auto
 
 卸载：`.\install.ps1 -Uninstall`（先停监控，再删快捷方式、自启项和安装目录）
 
+**升级到新版本**：直接用新源码重跑一遍安装脚本即可：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\install.ps1 -Dir "D:\GlancePad"
+```
+
+脚本会先探测并停掉正在运行的旧版本（否则 `lhm_bridge.exe` 锁着 dll 复制会失败），
+复制新文件，然后**保留你原来的 `settings.json`** —— Dock 项和天气城市都不丢。
+想恢复成默认配置再加 `-ResetSettings`。
+
 > 安装脚本只写**当前用户**的注册表 `HKCU\...\Run`，不需要管理员权限。
 
 ### 环境要求

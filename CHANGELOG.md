@@ -9,7 +9,9 @@
 
 ### 新增
 
-- **安装脚本 `install.ps1`**：一键装到指定目录（默认 `D:\GlancePad`），自动创建桌面快捷方式「副屏监控」、询问是否开机自启，并在安装前检查 Python 依赖 / Chrome / LHM 桥接 / PawnIO 驱动，缺什么给出具体补装命令。支持 `-Dir` / `-Autostart ask|yes|no` / `-NoPrompt` / `-NoDesktop` / `-Uninstall` / `-KeepSettings`。
+- **安装脚本 `install.ps1`**：一键装到指定目录（默认 `D:\GlancePad`），自动创建桌面快捷方式「副屏监控」、询问是否开机自启，并在安装前检查 Python 依赖 / Chrome / LHM 桥接 / PawnIO 驱动，缺什么给出具体补装命令。支持 `-Dir` / `-Autostart ask|yes|no` / `-NoPrompt` / `-NoDesktop` / `-ResetSettings` / `-Uninstall`。
+  - **升级默认保留 `settings.json`**（Dock 项和天气城市不会丢），只有显式 `-ResetSettings` 才会用安装包里的覆盖。
+  - **覆盖安装前会自动停掉旧版本**：否则运行中的 `lhm_bridge.exe` 锁着 `tools\LHM\*.dll`，复制会抛 `IOException` 让安装半途而废。单个文件被占用时也只提示、不中断。
 - **可选开机自启**：只写当前用户的 `HKCU\...\Run\GlancePad`，不需要管理员权限。三种开关入口 —— 安装脚本参数、托盘右键「开机自启 / 取消开机自启」、设置窗口新增的「系统」标签页（含勾选框与「创建桌面快捷方式」按钮）。
 - **应用图标** `static/glancepad.ico`（16~256 多尺寸，青绿三角 + 蓝点，与托盘图标一致），桌面快捷方式与托盘共用。
 - **VERSION 文件**。
