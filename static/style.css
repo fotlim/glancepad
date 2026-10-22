@@ -224,19 +224,28 @@ body.landscape .canvas{
 .ring-sm{width:104px;height:104px;}
 .ring-xs{width:70px;height:70px;}
 
+/* 圆环中央的文字层。
+   注意：这里绝对不能用 flex-wrap:wrap —— 一旦折成两行（「数字%」+「占用」），
+   多行 flex 的 align-content 默认是 stretch，两行各摊一半高度，数字那块就被顶到
+   上半区，看起来比环心高 20 多像素（CPU/GPU 大圆环 v1.0.2 之前就是这样）。
+   行内小标签改成绝对定位压在环底，数字+% 才能真正落在环心。 */
 .ring-text{
   position:absolute;inset:0;
   display:flex;align-items:center;justify-content:center;
-  flex-wrap:wrap;
+  flex-wrap:nowrap;
   font-variant-numeric:tabular-nums;
 }
 .ring-text b{
   font-size:27px;font-weight:600;line-height:1;
 }
-.ring-text i{font-style:normal;font-size:12px;color:var(--text-dim);margin-left:1px;align-self:flex-end;padding-bottom:3px;}
+.ring-text i{
+  font-style:normal;font-size:12px;color:var(--text-dim);margin-left:1px;
+  line-height:1;align-self:center;transform:translateY(5px);
+}
 .ring-text span{
-  width:100%;text-align:center;font-size:10px;color:var(--text-mute);
-  margin-top:3px;letter-spacing:.6px;
+  position:absolute;left:0;right:0;bottom:9px;
+  text-align:center;font-size:10px;color:var(--text-mute);
+  letter-spacing:.6px;line-height:1;
 }
 
 /* 小圆环（内存卡）：70px 里塞不下 27px 数字 + %，会被 flex-wrap 折到第二行。

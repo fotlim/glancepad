@@ -3,6 +3,12 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.0.3] - 2026-10-22
+
+### 修复
+
+- **CPU / GPU 大圆环百分比偏高**：`.ring-text` 原本是 `flex-wrap:wrap`，数字和 `%` 在 104px 圆环里挤成两行时，多行 flex 的 `align-content` 默认 `stretch`，两行各摊一半高度，数字那行被顶到上半区，视觉上比环心高 20 多 px。改为 `flex-wrap:nowrap` 让「数字 + %」保持单行，`align-items:center` 整体居中；行内小标签（占用 / 频率）从原来的 `width:100%` 折行改成 `position:absolute; bottom:9px` 压在环底，不再参与主轴布局。`%` 用 `translateY(5px)` 微沉到数字基线。headless 实测（1080×1920 与 864×1536 两种视口）：环 810.5–914.5（中心 862.5），数字+% 行 849–876（中心 862.5），**偏移 0**（修复前约 -24px）。
+
 ## [1.0.2] - 2026-10-22
 
 ### 修复
@@ -72,5 +78,7 @@
 - AIDA64 通道需要手动在「设置 → 外部应用程序」里勾选「允许共享内存」或「允许将监测数据写入注册表」；AIDA64 的界面是 Delphi 自绘，无法可靠自动化，故本版本不做自动开启。
 - 歌词中文匹配依赖 lrclib / 网易云曲库，冷门歌曲可能搜不到。
 
+[1.0.3]: https://github.com/fotlim/glancepad/releases/tag/v1.0.3
+[1.0.2]: https://github.com/fotlim/glancepad/releases/tag/v1.0.2
 [1.0.1]: https://github.com/fotlim/glancepad/releases/tag/v1.0.1
 [1.0.0]: https://github.com/fotlim/glancepad/releases/tag/v1.0.0
