@@ -156,6 +156,14 @@ import threading  # noqa: E402
 
 SETTINGS = os.path.join(ROOT, "settings.json")
 
+# POST /api/settings 允许写的键（白名单，防止随便往 settings.json 里塞东西）
+SETTING_KEYS = (
+    "city", "latitude", "longitude", "weather", "apps",
+    # 外观 / 显示
+    "screen", "font", "font_file",
+    "bg_mode", "bg_image", "bg_effect", "bg_blur", "bg_opacity",
+)
+
 
 def _load_settings():
     try:
@@ -236,7 +244,7 @@ def api_settings_post():
     try:
         body = request.get_json(force=True, silent=True) or {}
         cur = _load_settings()
-        for k in ("city", "latitude", "longitude", "weather", "apps"):
+        for k in SETTING_KEYS:
             if k in body:
                 cur[k] = body[k]
         _save_settings(cur)
@@ -245,6 +253,145 @@ def api_settings_post():
     except Exception as e:
         log.exception("保存设置失败")
         return jsonify({"ok": False, "error": str(e)}), 500
+
+
+# ---------------- 外观：字体 / 背景 / 副屏 ----------------
+FONTS = os.path.join(ROOT, "fonts")
+BGS = os.path.join(ROOT, "backgrounds")
+
+
+@app.route("/api/theme")
+def api_theme():
+    """外观相关设置（前端拿去切 body class、设背景图 src）。"""
+    d = _load_settings()
+    return jsonify({
+        "ok": True,
+        "font": d.get("font") or "system",
+        "font_file": d.get("font_file") or "",
+        "bg_mode": d.get("bg_mode") or "gradient",
+        "bg_image": d.get("bg_image") or "",
+        "bg_effect": d.get("bg_effect") or "blur",
+        "bg_blur": int(d.get("bg_blur") or 18),
+        "bg_opacity": int(d.get("bg_opacity") or 100),
+    })
+
+
+def _safe_name(s):
+    """只允许纯文件名，挡住 ../ 之类的路径穿越。"""
+    s = os.path.basename(str(s or "").replace("\\", "/"))
+    return s if s and s not in (".", "..") else ""
+
+
+@app.route("/api/theme.css")
+def api_theme_css():
+    """动态 CSS：自定义字体的 @font-face + 两个受设置影响的 CSS 变量。
+
+    必须排在 style.css 之后引入，否则会被 style.css 的默认值盖掉。
+    """
+    d = _load_settings()
+    font = (d.get("font") or "system").lower()
+    ff = _safe_name(d.get("font_file"))
+    blur = int(d.get("bg_blur") or 18)
+    op = int(d.get("bg_opacity") or 100)
+    op = max(0, min(100, op))
+
+    # @font-face 是顶层规则，绝对不能塞进 :root{} 里面，否则整条无效（自定义字体会不生效）。
+    use_custom = font == "ttf" and ff and os.path.exists(os.path.join(FONTS, ff))
+    parts = []
+    if use_custom:
+        parts.append('@font-face{font-family:"GlancePad-Custom";'
+                     'src:url("/fonts/%s");font-display:swap;}' % ff)
+
+    parts.extend([":root{", "--bg-blur:%dpx;" % blur, "--bg-opacity:%.2f;" % (op / 100.0)])
+    if use_custom:
+        parts.append('--font-family:"GlancePad-Custom",'
+                     '"HarmonyOS Sans SC","Microsoft YaHei UI",sans-serif;')
+    else:
+        parts.append('--font-family:"HarmonyOS Sans SC","Microsoft YaHei UI",'
+                     '"PingFang SC",-apple-system,"Segoe UI",sans-serif;')
+    parts.append("}")
+    css = "".join(parts)
+    return Response(css, mimetype="text/css",
+                    headers={"Cache-Control": "no-store, max-age=0"})
+
+
+@app.route("/fonts/<path:name>")
+def serve_font(name):
+    return send_from_directory(FONTS, name)
+
+
+@app.route("/backgrounds/<path:name>")
+def serve_bg(name):
+    return send_from_directory(BGS, name)
+
+
+@app.route("/api/files")
+def api_files():
+    """给设置界面列出已有的自定义字体 / 背景图。"""
+    def ls(p, exts):
+        try:
+            return sorted([f for f in os.listdir(p)
+                           if os.path.isfile(os.path.join(p, f))
+                           and f.lower().endswith(exts)])
+        except OSError:
+            return []
+    return jsonify({"ok": True,
+                    "fonts": ls(FONTS, (".ttf", ".otf", ".ttc")),
+                    "backgrounds": ls(BGS, (".jpg", ".jpeg", ".png", ".webp", ".bmp"))})
+
+
+@app.route("/api/screens")
+def api_screens():
+    """枚举显示器，按系统顺序 + 主屏标志，供设置界面选副屏。
+
+    注意：不能按 \\\\.\\DISPLAYn 的设备名判断（多显示器时编号会变），
+    只能按 EnumDisplayMonitors 的返回顺序 + Primary 标志。
+    """
+    import ctypes
+    from ctypes import wintypes
+
+    try:
+        ctypes.windll.shcore.SetProcessDpiAwareness(2)
+    except Exception:
+        try:
+            ctypes.windll.user32.SetProcessDPIAware()
+        except Exception:
+            pass
+
+    class RECT(ctypes.Structure):
+        _fields_ = [("left", wintypes.LONG), ("top", wintypes.LONG),
+                    ("right", wintypes.LONG), ("bottom", wintypes.LONG)]
+
+    class MONITORINFOEXW(ctypes.Structure):
+        _fields_ = [("cbSize", wintypes.DWORD), ("rcMonitor", RECT),
+                    ("rcWork", RECT), ("dwFlags", wintypes.DWORD),
+                    ("szDevice", wintypes.WCHAR * 32)]
+
+    out = []
+    MONITORENUMPROC = ctypes.WINFUNCTYPE(
+        wintypes.BOOL, wintypes.HMONITOR, wintypes.HDC,
+        ctypes.POINTER(RECT), wintypes.LPARAM)
+
+    def _cb(hmon, hdc, lprc, lparam):
+        mi = MONITORINFOEXW()
+        mi.cbSize = ctypes.sizeof(MONITORINFOEXW)
+        if ctypes.windll.user32.GetMonitorInfoW(hmon, ctypes.byref(mi)):
+            r = mi.rcMonitor
+            out.append({
+                "index": len(out) + 1,
+                "device": mi.szDevice,
+                "x": r.left, "y": r.top,
+                "w": r.right - r.left, "h": r.bottom - r.top,
+                "primary": bool(mi.dwFlags & 1),
+            })
+        return True
+
+    try:
+        ctypes.windll.user32.EnumDisplayMonitors(
+            None, None, MONITORENUMPROC(_cb), 0)
+    except Exception as e:
+        log.warning("枚举显示器失败: %s", e)
+    return jsonify({"ok": True, "screens": out})
 
 
 @app.route("/api/launch", methods=["POST"])
@@ -331,13 +478,41 @@ def _probe_apps():
 
 
 def _ensure_settings():
-    """首次运行时落一份默认设置（只放入本机真实存在的应用）"""
-    if os.path.exists(SETTINGS):
+    """首次运行时落一份默认设置；老版本设置文件会自动补齐新增的键。
+
+    注意：后端读取（sensors/network.py:settings）本来就会用 _defaults 兜底，
+    这里补齐只是为了让 settings.json 文件本身也完整，便于用户手改和设置界面回填。
+    """
+    defaults = {
+        "city": "杭州市", "latitude": 30.2741, "longitude": 120.1551,
+        "weather": True, "apps": [],
+        # 显示（v1.1）
+        "screen": 0, "font": "system", "font_file": "",
+        "bg_mode": "gradient", "bg_image": "",
+        "bg_effect": "blur", "bg_blur": 18, "bg_opacity": 100,
+    }
+    if not os.path.exists(SETTINGS):
+        defaults["apps"] = _probe_apps()
+        _save_settings(defaults)
+        log.info("已生成默认 settings.json（%d 个快捷启动项）", len(defaults["apps"]))
         return
-    apps = _probe_apps()
-    _save_settings({"city": "杭州市", "latitude": 30.2741,
-                    "longitude": 120.1551, "weather": True, "apps": apps})
-    log.info("已生成默认 settings.json（%d 个快捷启动项）", len(apps))
+
+    cur = _load_settings()
+    if not isinstance(cur, dict):
+        cur = {}
+    missing = [k for k in defaults if k not in cur]
+    if not missing:
+        return
+    # 只补缺失键，不动用户已有值
+    for k in missing:
+        cur[k] = defaults[k]
+    if cur.get("apps") is None:
+        cur["apps"] = defaults["apps"]
+    try:
+        _save_settings(cur)
+        log.info("settings.json 已补齐新键: %s", ", ".join(missing))
+    except Exception as e:  # 只读目录等情况，不影响启动
+        log.warning("补齐 settings.json 失败: %s", e)
 
 
 def main():

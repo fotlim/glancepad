@@ -1,8 +1,8 @@
-﻿# 副屏监控 · GlancePad
+# 副屏监控 · GlancePad
 
 > 一块闲置的竖屏，变成桌面上最顺眼的硬件仪表盘。
 
-![version](https://img.shields.io/badge/version-1.0.3-4fd1c5)
+![version](https://img.shields.io/badge/version-1.1.0-4fd1c5)
 ![platform](https://img.shields.io/badge/platform-Windows%2010%20%7C%2011-5b9dff)
 ![python](https://img.shields.io/badge/python-3.9%2B-9a7dff)
 ![license](https://img.shields.io/badge/license-MIT-57d98a)
@@ -28,13 +28,13 @@
 
 | 模块 | 显示内容 |
 |---|---|
-| **顶部** | 时钟、日期、天气（城市 / 温度 / 天气现象 / 最高最低 / 湿度 / 风速） |
+| **顶部** | 大号时钟、**每日一言**（hitokoto）、右上角日期 + **历史上的今天**（8 条，年份倒序） |
 | **CPU** | 占用率圆环、温度、频率、电压、功耗、用户/系统/IO 占比、16 核逐核占用 |
 | **GPU** | 占用率圆环、温度、频率、功耗、显存占用条、热点温度、显存负载、核心电压、核心/显存/编码/解码利用率 |
 | **性能监控** | CPU / GPU / 内存 三条 60 点滚动折线 |
-| **网络** | SSID、适配器、连接类型、频段信道、IPv4/IPv6、收发速率、信号强度、**下载速度折线** |
+| **网络 + 天气** | 左半：SSID、适配器、连接类型、频段信道、IPv4/IPv6、收发速率、信号强度、**下载速度折线**；右半：**今日天气 + 七天预报**（图标 / 高低温 / 降水概率） |
 | **内存** | 已用/可用/已缓存/已提交/分页池/非分页 + 内存条规格（型号/频率/插槽） |
-| **温度监控** | CPU、GPU、GPU 热点、CPU CCD1、SoC |
+| **温度监控** | CPU、GPU、**风扇 1 / 风扇 2 转速**（主板 SuperIO 读不到时显示 `--`） |
 | **存储** | 每块盘一张卡：占用条、已用/总量、剩余、**活动时间、平均响应、读写速度**、物理盘号 |
 | **音乐播放器** | 播放/暂停/上一首/下一首、系统音量、歌名歌手、**三行滚动歌词**、待机频谱 |
 | **快捷启动 Dock** | 点击即启动应用，悬停显示名称气泡，图标/名称/路径/顺序**全部可自定义** |
@@ -162,6 +162,33 @@ kiosk 全屏没有关闭按钮，这是故意的（避免误触）。退出方�
 同一设置窗口的「天气与位置」页，填城市名 + 经纬度即可（城市名只是显示用，天气按经纬度查）。
 天气数据来自 [open-meteo.com](https://open-meteo.com/)，**免费、无需 API key**。
 
+### 换字体
+
+设置窗口 →「**显示**」→「字体」：
+
+- **系统默认**：用系统字体栈（HarmonyOS Sans SC → 微软雅黑 → PingFang SC → Segoe UI）
+- **自定义 TTF**：点「导入字体…」选一个 .ttf / .otf / .ttc，文件会被复制到程序目录的 onts/ 下，
+  然后在下面下拉里选中它即可。**只对本程序生效，不安装到系统**。
+
+> 字体靠 /api/theme.css 动态下发 @font-face + --font-family，页面 20 秒内自动应用，不会重排错位。
+
+### 换背景
+
+设置窗口 →「**显示**」→「背景」：
+
+- **默认渐变**：内置的暗色径向渐变
+- **自定义图片**：点「导入图片…」选 .jpg / .png / .webp / .bmp，复制到程序目录的 ackgrounds/
+
+三种处理方式：
+
+| 处理方式 | 效果 |
+|---|---|
+| **模糊** | 高斯模糊 + 轻微饱和增强（推荐，模拟毛玻璃），「模糊半径」滑块可调 0~60px |
+| **压暗** | 不加模糊，只降低亮度，适合深色照片 |
+| **原图** | 直接用原图，不加任何滤镜 |
+
+「不透明度」滑块控制背景图本身的不透明度（10%~100%），卡片始终是半透明毛玻璃，不影响可读性。
+
 ---
 
 ## 数据从哪来
@@ -205,17 +232,19 @@ glancepad/
 │                            /  /api/snapshot  /api/stream(SSE)  /api/sources
 │                            /api/media  /api/media/control  /api/media/volume
 │                            /api/apps  /api/apps/version  /api/launch  /api/settings
+│                            /api/screens  /api/theme  /api/theme.css  /api/files
+│                            /fonts/<name>  /backgrounds/<name>
 ├─ launcher.pyw            托盘程序兼设置程序（pystray + tkinter）
 ├─ start_monitor.ps1       一键启动：LHM 桥 → Flask → kiosk → 置顶守护 → 托盘
 ├─ keep_top.ps1            置顶守护：每 2 秒抢回最前 + 摘掉任务栏图标
-├─ settings.json           城市/经纬度/Dock 应用（首次运行自动生成，不入库）
+├─ settings.json           城市/经纬度/Dock/显示设置（首次运行自动生成，不入库）
 ├─ requirements.txt        Python 依赖
 ├─ VERSION                 版本号
 ├─ sensors/
 │  ├─ aida64.py            AIDA64 共享内存 + 注册表双通道
 │  ├─ lhm.py               LibreHardwareMonitor 桥接（按 sensor id 精确映射）
 │  ├─ media.py             SMTC 播放状态/控制 + pycaw 音量 + 歌词检索
-│  ├─ network.py           WLAN 信息 + open-meteo 天气（带缓存与降级）
+│  ├─ network.py           WLAN 信息 + open-meteo 天气/七天预报 + 一言 + 历史上的今天
 │  └─ hardware.py          主采集层：三层合并 + psutil/nvidia-smi 兜底
 ├─ static/
 │  ├─ index.html           布局骨架
@@ -228,6 +257,8 @@ glancepad/
 │  ├─ lhm_bridge.cs        常驻桥接源码（HTTP 暴露传感器 JSON）
 │  ├─ lhm_probe.cs         一次性导出全部传感器（调试用）
 │  └─ aida_*.py            AIDA64 窗口自动化实验脚本（历史遗留，仅参考）
+├─ fonts/                  用户导入的字体（.gitkeep 占位，内容不入库）
+├─ backgrounds/            用户导入的背景图（.gitkeep 占位，内容不入库）
 └─ docs/screenshots/       README 截图
 ```
 
@@ -307,6 +338,27 @@ Chrome 重建窗口后 2 秒内会自动恢复，不需要手动干预。
 托盘右键 →「开机自启」勾选/取消；或 设置窗口 →「系统」标签页 → 勾选框。
 本质是写当前用户的 `HKCU\Software\Microsoft\Windows\CurrentVersion\Run\GlancePad`，
 不需要管理员权限，也不改动任何系统服务。
+
+**Q：WiFi 一直显示「未检测到 WiFi 连接」，但电脑明明连着？**
+Windows 把 SSID 当作**位置信息**。如果系统「定位服务」总开关被关掉，`netsh wlan show interfaces`
+会直接返回 `error 5: Access is denied`，连 SSID 都读不到。开一下就好：
+
+```powershell
+# 开启定位服务（只需一次，管理员权限）
+Set-ItemProperty "HKLM:\SYSTEM\CurrentControlSet\Services\lfsvc\Service\Configuration" -Name Status -Value 1 -Type DWord
+Restart-Service lfsvc -Force
+```
+
+或者：设置 → 隐私和安全性 → 定位 → 打开「定位服务」。
+程序另有 `Get-NetConnectionProfile` 兜底，定位关着时仍能显示 SSID 和网卡，但**信号强度与信道会缺失**。
+
+**Q：怎么让它显示在另一块屏幕上？**
+设置窗口 →「显示」→「副屏选择」，下拉里会列出当前所有显示器（含分辨率与主屏标记），选一个保存，
+**下次启动**生效。选「自动」则沿用原来的规则：优先挑非主屏。
+
+也可以命令行指定：`.\start_monitor.ps1 -Screen 2`，
+或直接改 `settings.json` 的 `"screen"` 字段（`0` = 自动，`1..n` = 按枚举顺序）。
+注意枚举顺序由 `EnumDisplayMonitors` 决定，**不是** `\\.\DISPLAYn` 的编号，所以请以设置窗口里显示的列表为准。
 
 **Q：主板温度 / 磁盘温度 / 风扇转速一直是 `--`？**
 LHM 需要能识别主板的 SuperIO 芯片。部分主板（比如开发测试用的 `X5`）识别不到，这不是配置问题，

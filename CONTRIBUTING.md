@@ -48,6 +48,19 @@ node --check static\app.js
 powershell -Command "$e=$null; [System.Management.Automation.Language.Parser]::ParseFile('.\start_monitor.ps1',[ref]$null,[ref]$e); if($e){$e|%%{$_.Message}}else{'OK'}"
 ```
 
+## 加一个「显示设置」（字体 / 背景 / 选屏）
+
+这三类设置的链路是固定的，照着抄就行：
+
+1. `sensors/network.py` 的 `_defaults` 里加默认键，并在 `settings()` 里透传（已有 13 个键，直接复用）。
+2. `app.py` 的 `SETTING_KEYS` 元组里加键名 —— **不加会被 `POST /api/settings` 静默丢掉**。
+3. `app.py` 的 `_ensure_settings()` 会自动给老 `settings.json` 补齐缺失键，不需要手动迁移。
+4. 前端读设置走 `/api/theme`（JSON）或 `/api/theme.css`（CSS 变量），**`app.js:applyTheme()` 每 20 秒轮询一次并做 key 去重**。
+5. 设置界面在 `launcher.pyw` 的 `SettingsWindow._build()`，记得同步改 `save()` 里的 `d.update(...)`。
+
+> `@font-face` 这类**顶层 CSS 规则不能写进 `:root{}` 里面**，会被整条丢弃（v1.1.0 踩过这个坑）。
+> 正确写法是先拼 `@font-face{...}`，再拼 `:root{--font-family:...}`。
+
 ## 踩过的坑（改代码前值得看一眼）
 
 1. **PowerShell 脚本必须存 UTF-8 带 BOM**

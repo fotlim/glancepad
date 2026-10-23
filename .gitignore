@@ -39,3 +39,9 @@ Thumbs.db
 
 # 本地截图产物（正式截图放 docs/screenshots/）
 assets/
+
+# 用户自己导入的字体与背景图（体积大、每人不同；空目录用 .gitkeep 占位）
+fonts/*
+backgrounds/*
+!fonts/.gitkeep
+!backgrounds/.gitkeep

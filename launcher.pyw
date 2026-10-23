@@ -12,6 +12,7 @@ settings.json 一改，正在跑的监控页面 20 秒内自动刷新 Dock（后
 """
 import json
 import os
+import shutil
 import socket
 import subprocess
 import sys
@@ -23,6 +24,8 @@ ROOT = os.path.dirname(os.path.abspath(__file__))
 SETTINGS = os.path.join(ROOT, "settings.json")
 PS1 = os.path.join(ROOT, "start_monitor.ps1")
 ICONS = os.path.join(ROOT, "static", "icons")
+FONTS = os.path.join(ROOT, "fonts")
+BGS = os.path.join(ROOT, "backgrounds")
 PORT = 8770
 URL = "http://127.0.0.1:%d/" % PORT
 LOCK_PORT = 8779          # 单实例锁
@@ -34,6 +37,15 @@ DEFAULT = {
     "longitude": 120.1551,
     "weather": True,
     "apps": [],
+    # ---- 显示（v1.1）
+    "screen": 0,             # 0=自动挑非主屏；1..n=按枚举序号
+    "font": "system",        # system / ttf
+    "font_file": "",
+    "bg_mode": "gradient",   # gradient / image
+    "bg_image": "",
+    "bg_effect": "blur",     # blur / dim / none
+    "bg_blur": 18,
+    "bg_opacity": 100,
 }
 
 
@@ -181,6 +193,67 @@ def icon_files():
         return []
 
 
+# ------------------------------------------------- 显示器 / 字体 / 背景资源
+def list_dir_files(folder, exts):
+    try:
+        out = [f for f in os.listdir(folder) if f.lower().endswith(tuple(exts))]
+        return sorted(out)
+    except Exception:
+        return []
+
+
+def enum_screens():
+    """按 EnumDisplayMonitors 顺序枚举显示器（DPI 感知，返回原始像素坐标）。
+
+    注意：**绝对不要按 \\.\DISPLAYn 的设备名硬编码**，设备号会随插拔变化，
+    这里只依赖枚举顺序 + primary 标志。
+    """
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        class MONITORINFOEXW(ctypes.Structure):
+            _fields_ = [("cbSize", wintypes.DWORD),
+                        ("rcMonitor", wintypes.RECT),
+                        ("rcWork", wintypes.RECT),
+                        ("dwFlags", wintypes.DWORD),
+                        ("szDevice", wintypes.WCHAR * 32)]
+
+        user32 = ctypes.windll.user32
+        try:
+            ctypes.windll.shcore.SetProcessDpiAwareness(2)
+        except Exception:
+            try:
+                user32.SetProcessDPIAware()
+            except Exception:
+                pass
+
+        MONITORENUMPROC = ctypes.WINFUNCTYPE(
+            wintypes.BOOL, wintypes.HANDLE, wintypes.HDC,
+            ctypes.POINTER(wintypes.RECT), wintypes.LPARAM)
+        found = []
+
+        def cb(hmon, hdc, lprc, lparam):
+            mi = MONITORINFOEXW()
+            mi.cbSize = ctypes.sizeof(MONITORINFOEXW)
+            if user32.GetMonitorInfoW(hmon, ctypes.byref(mi)):
+                r = mi.rcMonitor
+                found.append({
+                    "device": mi.szDevice,
+                    "x": r.left, "y": r.top,
+                    "w": r.right - r.left, "h": r.bottom - r.top,
+                    "primary": bool(mi.dwFlags & 1),
+                })
+            return True
+
+        user32.EnumDisplayMonitors(None, None, MONITORENUMPROC(cb), 0)
+        for i, s in enumerate(found):
+            s["index"] = i + 1
+        return found
+    except Exception:
+        return []
+
+
 def make_tray_image():
     """没有现成 ico 就画一个：深底圆角 + 青绿三角"""
     from PIL import Image, ImageDraw
@@ -318,8 +391,8 @@ class SettingsWindow:
         self.win = w
         w.title("副屏监控 · 设置")
         w.configure(bg="#1b242b")
-        w.geometry("760x620")
-        w.minsize(680, 540)
+        w.geometry("820x700")
+        w.minsize(720, 600)
         w.protocol("WM_DELETE_WINDOW", w.withdraw)
 
         style = ttk.Style(w)
@@ -449,6 +522,145 @@ class SettingsWindow:
                  bg="#1b242b", fg="#6d8296", justify="left", anchor="w").pack(
             fill="x", padx=16, pady=(16, 0))
 
+        # ---------------- Tab4: 显示（副屏 / 字体 / 背景）
+        t4 = tk.Frame(nb, bg="#1b242b")
+        nb.add(t4, text="  显示  ")
+
+        def grp(parent, text):
+            tk.Label(parent, text=text, bg="#1b242b", fg="#4fd1c5",
+                     font=("Microsoft YaHei UI", 10, "bold"), anchor="w").pack(
+                fill="x", padx=16, pady=(14, 4))
+
+        def hint(parent, text):
+            tk.Label(parent, text=text, bg="#1b242b", fg="#6d8296",
+                     justify="left", anchor="w").pack(fill="x", padx=16, pady=(2, 0))
+
+        # ---- 副屏
+        grp(t4, "副屏选择")
+        scr_row = tk.Frame(t4, bg="#1b242b")
+        scr_row.pack(fill="x", padx=16)
+        self.screens = enum_screens()
+        labels = ["自动（挑非主屏）"]
+        self.screen_map = {labels[0]: 0}
+        for s in self.screens:
+            lb = "%d. %s  %dx%d @(%d,%d)%s" % (
+                s["index"], s["device"], s["w"], s["h"], s["x"], s["y"],
+                "  [主屏]" if s["primary"] else "")
+            labels.append(lb)
+            self.screen_map[lb] = s["index"]
+        cur = int(d.get("screen", 0) or 0)
+        cur_lb = labels[0]
+        for lb in labels:
+            if self.screen_map[lb] == cur:
+                cur_lb = lb
+                break
+        self.v_screen = tk.StringVar(value=cur_lb)
+        self.cb_screen = ttk.Combobox(scr_row, textvariable=self.v_screen,
+                                      values=labels, state="readonly", width=52)
+        self.cb_screen.pack(side="left")
+        tk.Button(scr_row, text="重新检测", command=self.rescan_screens,
+                  bg="#26333d", fg="#cfe0ee", relief="flat",
+                  padx=12, pady=3).pack(side="left", padx=10)
+        hint(t4, "选好点「保存设置」，下次启动生效。显示器的设备名会随插拔变化，这里按枚举顺序记序号。")
+
+        tk.Frame(t4, bg="#26333d", height=1).pack(fill="x", padx=16, pady=12)
+
+        # ---- 字体
+        grp(t4, "字体")
+        f1 = tk.Frame(t4, bg="#1b242b")
+        f1.pack(fill="x", padx=16)
+        self.v_font = tk.StringVar(value=str(d.get("font", "system") or "system"))
+        tk.Radiobutton(f1, text="系统默认", variable=self.v_font, value="system",
+                       bg="#1b242b", fg="#cfe0ee", selectcolor="#131a20",
+                       activebackground="#1b242b", activeforeground="#4fd1c5",
+                       relief="flat").pack(side="left")
+        tk.Radiobutton(f1, text="自定义 TTF", variable=self.v_font, value="ttf",
+                       bg="#1b242b", fg="#cfe0ee", selectcolor="#131a20",
+                       activebackground="#1b242b", activeforeground="#4fd1c5",
+                       relief="flat").pack(side="left", padx=(14, 0))
+
+        f2 = tk.Frame(t4, bg="#1b242b")
+        f2.pack(fill="x", padx=16, pady=(6, 0))
+        self.font_files = list_dir_files(FONTS, (".ttf", ".otf", ".ttc"))
+        self.v_font_file = tk.StringVar(value=str(d.get("font_file", "") or ""))
+        self.cb_font = ttk.Combobox(f2, textvariable=self.v_font_file,
+                                    values=self.font_files, state="readonly", width=42)
+        self.cb_font.pack(side="left")
+        tk.Button(f2, text="导入字体…", command=self.import_font, bg="#26333d",
+                  fg="#cfe0ee", relief="flat", padx=12, pady=3).pack(side="left", padx=8)
+        hint(t4, "导入的字体复制到程序目录 fonts/ 下，不会改动系统字体。仅对监控页面生效。")
+
+        tk.Frame(t4, bg="#26333d", height=1).pack(fill="x", padx=16, pady=12)
+
+        # ---- 背景
+        grp(t4, "背景")
+        b1 = tk.Frame(t4, bg="#1b242b")
+        b1.pack(fill="x", padx=16)
+        self.v_bg_mode = tk.StringVar(value=str(d.get("bg_mode", "gradient") or "gradient"))
+        tk.Radiobutton(b1, text="默认渐变", variable=self.v_bg_mode, value="gradient",
+                       bg="#1b242b", fg="#cfe0ee", selectcolor="#131a20",
+                       activebackground="#1b242b", activeforeground="#4fd1c5",
+                       relief="flat").pack(side="left")
+        tk.Radiobutton(b1, text="自定义图片", variable=self.v_bg_mode, value="image",
+                       bg="#1b242b", fg="#cfe0ee", selectcolor="#131a20",
+                       activebackground="#1b242b", activeforeground="#4fd1c5",
+                       relief="flat").pack(side="left", padx=(14, 0))
+
+        b2 = tk.Frame(t4, bg="#1b242b")
+        b2.pack(fill="x", padx=16, pady=(6, 0))
+        self.bg_files = list_dir_files(BGS, (".jpg", ".jpeg", ".png", ".webp", ".bmp"))
+        self.v_bg_image = tk.StringVar(value=str(d.get("bg_image", "") or ""))
+        self.cb_bg = ttk.Combobox(b2, textvariable=self.v_bg_image,
+                                  values=self.bg_files, state="readonly", width=42)
+        self.cb_bg.pack(side="left")
+        tk.Button(b2, text="导入图片…", command=self.import_bg, bg="#26333d",
+                  fg="#cfe0ee", relief="flat", padx=12, pady=3).pack(side="left", padx=8)
+
+        b3 = tk.Frame(t4, bg="#1b242b")
+        b3.pack(fill="x", padx=16, pady=(8, 0))
+        tk.Label(b3, text="处理方式", bg="#1b242b", fg="#9fb3c8").pack(side="left")
+        self.v_bg_effect = tk.StringVar(value=str(d.get("bg_effect", "blur") or "blur"))
+        for val, txt in (("blur", "模糊"), ("dim", "压暗"), ("none", "原图")):
+            tk.Radiobutton(b3, text=txt, variable=self.v_bg_effect, value=val,
+                           bg="#1b242b", fg="#cfe0ee", selectcolor="#131a20",
+                           activebackground="#1b242b", activeforeground="#4fd1c5",
+                           relief="flat").pack(side="left", padx=(10, 0))
+
+        b4 = tk.Frame(t4, bg="#1b242b")
+        b4.pack(fill="x", padx=16, pady=(8, 0))
+        tk.Label(b4, text="模糊半径", bg="#1b242b", fg="#9fb3c8", width=8,
+                 anchor="w").pack(side="left")
+        self.v_bg_blur = tk.IntVar(value=int(d.get("bg_blur", 18) or 18))
+        tk.Scale(b4, from_=0, to=60, orient="horizontal", variable=self.v_bg_blur,
+                 bg="#1b242b", fg="#9fb3c8", troughcolor="#131a20",
+                 highlightthickness=0, length=260, sliderrelief="flat",
+                 activebackground="#4fd1c5").pack(side="left")
+        self.lb_blur = tk.Label(b4, text="", bg="#1b242b", fg="#6d8296", width=14,
+                                anchor="w")
+        self.lb_blur.pack(side="left", padx=6)
+        self.v_bg_blur.trace_add("write", lambda *_: self.lb_blur.config(
+            text="%d px" % self.v_bg_blur.get()))
+        self.lb_blur.config(text="%d px" % self.v_bg_blur.get())
+
+        b5 = tk.Frame(t4, bg="#1b242b")
+        b5.pack(fill="x", padx=16, pady=(2, 0))
+        tk.Label(b5, text="不透明度", bg="#1b242b", fg="#9fb3c8", width=8,
+                 anchor="w").pack(side="left")
+        self.v_bg_op = tk.IntVar(value=int(d.get("bg_opacity", 100) or 100))
+        tk.Scale(b5, from_=10, to=100, orient="horizontal", variable=self.v_bg_op,
+                 bg="#1b242b", fg="#9fb3c8", troughcolor="#131a20",
+                 highlightthickness=0, length=260, sliderrelief="flat",
+                 activebackground="#4fd1c5").pack(side="left")
+        self.lb_op = tk.Label(b5, text="", bg="#1b242b", fg="#6d8296", width=14,
+                              anchor="w")
+        self.lb_op.pack(side="left", padx=6)
+        self.v_bg_op.trace_add("write", lambda *_: self.lb_op.config(
+            text="%d%%" % self.v_bg_op.get()))
+        self.lb_op.config(text="%d%%" % self.v_bg_op.get())
+
+        hint(t4, "模糊半径只在「处理方式 = 模糊」时起作用；不透明度越低，背景图越淡。\n"
+                 "图片复制到程序目录 backgrounds/ 下，原图不会被修改。")
+
         # ---------------- 底部按钮
         foot = tk.Frame(w, bg="#131a20")
         foot.pack(fill="x", side="bottom")
@@ -518,6 +730,55 @@ class SettingsWindow:
         self.tv.selection_set(str(j))
         self.tv.see(str(j))
 
+    # ---- 显示页签
+    def rescan_screens(self):
+        self.screens = enum_screens()
+        labels = ["自动（挑非主屏）"]
+        self.screen_map = {labels[0]: 0}
+        for s in self.screens:
+            lb = "%d. %s  %dx%d @(%d,%d)%s" % (
+                s["index"], s["device"], s["w"], s["h"], s["x"], s["y"],
+                "  [主屏]" if s["primary"] else "")
+            labels.append(lb)
+            self.screen_map[lb] = s["index"]
+        self.cb_screen.config(values=labels)
+        if self.v_screen.get() not in labels:
+            self.v_screen.set(labels[0])
+
+    def _import_into(self, folder, types, exts, title, var, combobox):
+        from tkinter import filedialog, messagebox
+        try:
+            os.makedirs(folder, exist_ok=True)
+        except Exception as e:
+            messagebox.showerror(title, "无法创建目录：%s" % e, parent=self.win)
+            return
+        path = filedialog.askopenfilename(parent=self.win, title=title, filetypes=types)
+        if not path:
+            return
+        name = os.path.basename(path)
+        dst = os.path.join(folder, name)
+        try:
+            shutil.copyfile(path, dst)
+        except Exception as e:
+            messagebox.showerror(title, "复制失败：%s" % e, parent=self.win)
+            return
+        combobox.config(values=list_dir_files(folder, exts))
+        var.set(name)
+        self.lb_state.config(text="已导入 %s" % name, fg="#57d98a")
+
+    def import_font(self):
+        self._import_into(
+            FONTS, [("字体文件", "*.ttf *.otf *.ttc")], (".ttf", ".otf", ".ttc"),
+            "选择字体文件", self.v_font_file, self.cb_font)
+        self.v_font.set("ttf")
+
+    def import_bg(self):
+        self._import_into(
+            BGS, [("图片", "*.jpg *.jpeg *.png *.webp *.bmp")],
+            (".jpg", ".jpeg", ".png", ".webp", ".bmp"),
+            "选择背景图片", self.v_bg_image, self.cb_bg)
+        self.v_bg_mode.set("image")
+
     # ---- 系统
     def apply_autostart(self):
         want = bool(self.v_auto.get())
@@ -547,7 +808,15 @@ class SettingsWindow:
         d = load_settings()
         d.update(city=self.v_city.get().strip() or "杭州市",
                  latitude=lat, longitude=lon,
-                 weather=bool(self.v_wx.get()), apps=self.apps)
+                 weather=bool(self.v_wx.get()), apps=self.apps,
+                 screen=int(self.screen_map.get(self.v_screen.get(), 0)),
+                 font=self.v_font.get() or "system",
+                 font_file=self.v_font_file.get() or "",
+                 bg_mode=self.v_bg_mode.get() or "gradient",
+                 bg_image=self.v_bg_image.get() or "",
+                 bg_effect=self.v_bg_effect.get() or "blur",
+                 bg_blur=int(self.v_bg_blur.get()),
+                 bg_opacity=int(self.v_bg_op.get()))
         try:
             save_settings(d)
         except Exception as e:

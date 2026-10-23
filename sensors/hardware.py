@@ -613,7 +613,7 @@ def snapshot():
 
     up, down = _net_speed()
 
-    # 温度列表
+    # 温度列表（v1.1：去掉 GPU Hotspot / CPU CCD1 / SoC，只留主要几项）
     temps = []
     if av.get("cpu_temp") is not None:
         temps.append({"label": "CPU", "value": round(av["cpu_temp"]), "unit": "°C"})
@@ -621,24 +621,31 @@ def snapshot():
         temps.append({"label": "CPU Package", "value": round(av["cpu_pkg_temp"]), "unit": "°C"})
     if av.get("gpu_temp") is not None:
         temps.append({"label": "GPU", "value": round(av["gpu_temp"]), "unit": "°C"})
-    if av.get("gpu_hotspot") is not None:
-        temps.append({"label": "GPU Hotspot", "value": round(av["gpu_hotspot"]), "unit": "°C"})
     if av.get("gpu_mem_temp") is not None:
         temps.append({"label": "GPU Memory", "value": round(av["gpu_mem_temp"]), "unit": "°C"})
     if av.get("mem_temp") is not None:
         temps.append({"label": "DIMM", "value": round(av["mem_temp"]), "unit": "°C"})
     if av.get("mb_temp") is not None:
         temps.append({"label": "主板", "value": round(av["mb_temp"]), "unit": "°C"})
-    # AMD CPU 的 CCD / SoC 温度（LHM 直接给，AIDA64 不一定有）
-    if av.get("cpu_ccd_temp") is not None:
-        temps.append({"label": "CPU CCD1", "value": round(av["cpu_ccd_temp"]), "unit": "°C"})
-    if av.get("soc_temp") is not None:
-        temps.append({"label": "SoC", "value": round(av["soc_temp"]), "unit": "°C"})
 
-    # 风扇：AIDA64 优先，没有再吃 LHM 的
-    fans = (a["fans"] or []) if a["ok"] else []
+    # 风扇：AIDA64 优先，没有再吃 LHM 的；两边的键名不统一，这里统一成 value/unit
+    # 注意 aida64.py 用 {"label","rpm"}，lhm.py 用 {"label","value","unit"}
+    fans = []
+    if a["ok"]:
+        for f in (a["fans"] or []):
+            v = f.get("value", f.get("rpm"))
+            if v:
+                fans.append({"label": f.get("label") or "Fan",
+                             "value": int(v), "unit": "RPM"})
     if not fans:
-        fans = l.get("fans") or []
+        for f in (l.get("fans") or []):
+            v = f.get("value", f.get("rpm"))
+            if v:
+                fans.append({"label": f.get("label") or "Fan",
+                             "value": int(v), "unit": "RPM"})
+    # 固定给两个风扇位，前端不用再判断长度（本机 SuperIO 未识别时是空数组）
+    for i in range(len(fans), 2):
+        fans.append({"label": "风扇 %d" % (i + 1), "value": None, "unit": "RPM"})
 
     boot = psutil.boot_time()
     upsec = int(time.time() - boot)
@@ -675,6 +682,8 @@ def snapshot():
         "net": {"up": up, "down": down},
         "wifi": network.wifi(),
         "weather": network.weather(),
+        "quote": network.quote(),
+        "history": network.history(),
         "uptime": upsec,
     }
 

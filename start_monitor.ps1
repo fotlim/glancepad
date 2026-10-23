@@ -189,10 +189,24 @@ function Set-TopMost {
 }
 
 # ------------------------------------------------------------ 屏幕
+function Get-SettingScreen {
+    # 从 settings.json 读 screen 字段（0=自动）。读不到就返回 0。
+    $f = Join-Path $ROOT "settings.json"
+    if (-not (Test-Path $f)) { return 0 }
+    try {
+        $j = Get-Content $f -Raw -Encoding UTF8 | ConvertFrom-Json
+        if ($null -ne $j.screen) { return [int]$j.screen }
+    } catch { }
+    return 0
+}
+
 function Get-TargetScreen {
     $screens = [System.Windows.Forms.Screen]::AllScreens
-    if ($Screen -ge 1 -and $Screen -le $screens.Count) {
-        $s = $screens[$Screen - 1]
+    # 命令行 -Screen 优先；没给就用 settings.json 里的；都是 0 则自动
+    $want = $Screen
+    if ($want -lt 1) { $want = Get-SettingScreen }
+    if ($want -ge 1 -and $want -le $screens.Count) {
+        $s = $screens[$want - 1]
     } else {
         # 自动：优先非主屏
         $s = $screens | Where-Object { -not $_.Primary } | Select-Object -First 1
@@ -277,6 +291,20 @@ function Start-Bridge {
 }
 
 function Get-LauncherPids {
+    # 以「进程扫描」为准，pid 文件只作兜底。
+    # 原因：pid 文件可能过期（改了安装目录、上次异常退出、launcher 自己重启），
+    # 只看 pid 文件会把「明明在跑」判成未运行，然后重复拉起第二个托盘。
+    $found = @()
+    try {
+        $found = @(Get-CimInstance Win32_Process -Filter "Name='pythonw.exe' OR Name='python.exe'" -EA SilentlyContinue |
+            Where-Object { $_.CommandLine -and $_.CommandLine -like "*launcher.pyw*" } |
+            ForEach-Object { [int]$_.ProcessId })
+    } catch { }
+    if ($found.Count -gt 0) {
+        # 顺手把 pid 文件修正成真实值
+        try { ($found[0] | Set-Content $LPIDF -Encoding ASCII) } catch { }
+        return $found
+    }
     if (-not (Test-Path $LPIDF)) { return @() }
     $k = (Get-Content $LPIDF -Raw -EA SilentlyContinue)
     if (-not $k) { return @() }

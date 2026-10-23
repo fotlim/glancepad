@@ -30,8 +30,9 @@ html,body{
   overflow:hidden;
   background:var(--bg-deep);
   color:var(--text);
-  font-family:"HarmonyOS Sans SC","Microsoft YaHei UI","PingFang SC",
-              -apple-system,"Segoe UI",sans-serif;
+  /* --font-family 由 /api/theme.css 按 settings.json 覆盖（选自定义 TTF 时） */
+  font-family:var(--font-family,"HarmonyOS Sans SC","Microsoft YaHei UI","PingFang SC",
+              -apple-system,"Segoe UI",sans-serif);
   -webkit-font-smoothing:antialiased;
   user-select:none;
   cursor:default;
@@ -49,7 +50,25 @@ html,body{
   filter:blur(18px) saturate(115%);
   transform:scale(1.06);
   z-index:0;
+  overflow:hidden;
 }
+/* 自定义背景图（由 /api/theme.css 切到 image 模式时才有 src）。
+   图片本身也吃 .bg 的 blur，模糊半径由 --bg-blur 控制。 */
+.bg img{
+  display:none;
+  position:absolute;inset:0;
+  width:100%;height:100%;
+  object-fit:cover;
+  opacity:var(--bg-opacity,1);
+}
+body.bg-image .bg{
+  background:#0e1418;
+  filter:blur(var(--bg-blur,18px)) saturate(115%);
+}
+body.bg-image .bg img{display:block;}
+/* dim 模式：不模糊，靠一层暗色盖住，适合当壁纸看 */
+body.bg-dim .bg{filter:saturate(105%) brightness(.75);}
+body.bg-none .bg{filter:none;}
 .bg-veil{
   position:fixed;inset:0;
   background:linear-gradient(180deg,rgba(8,12,16,0.30) 0%,rgba(8,12,16,0.10) 40%,rgba(8,12,16,0.42) 100%);
@@ -79,8 +98,9 @@ html,body{
 body.portrait .canvas{
   width:864px;height:1536px;
   grid-template-columns:1fr 1fr;
-  /* CPU/GPU 行收紧、存储行压矮，省下的高度给 内存+温度+播放器 和 网络图 */
-  grid-template-rows:0.50fr 1.16fr 0.74fr 1.22fr 1.40fr 0.80fr 0.52fr;
+  /* CPU/GPU 行收紧、存储行压矮，省下的高度给 内存+温度+播放器 和 网络图
+     head 行从 0.50fr 加到 0.80fr：时间下面要放一言，右上还要放日期+历史上的今天 */
+  grid-template-rows:0.68fr 1.24fr 0.70fr 1.24fr 1.38fr 0.76fr 0.50fr;
   grid-template-areas:
     "head  head"
     "cpu   gpu"
@@ -97,10 +117,10 @@ body.landscape .canvas{
   grid-template-columns:1.12fr 1fr 1.02fr;
   /* row2（内存/温度/播放器）原来只占 1.14fr → 每个子卡只有 90px 高，
      装不下 70px 圆环 + 底部「共/保留/插槽」，圆环直接压住文字。
-     这里把 row2 加到 1.86fr，让 mem/temp 各约 142px、播放器 296px，
-     cpu/gpu 行给到 1.48fr（GPU 卡有 4 条 ubar + 显存条，1.34fr 会溢出 20px），
-     多出来的高度从 head / wifi / dock 挤，总 fr 仍是 5.12 不变。 */
-  grid-template-rows:0.38fr 1.54fr 0.90fr 1.86fr 0.46fr;
+     wifi 行给到 1.14fr（约 185px）：左半要塞 8 项 WiFi 信息（横屏改 2 列 = 4 行）
+     + 下载速度折线，0.86fr 只有 138px、kv-list 被压到 22px 完全挤爆。
+     多出来的高度从 head / row2 挤，总 fr 仍是 5.30。 */
+  grid-template-rows:0.58fr 1.44fr 1.26fr 1.56fr 0.44fr;
   grid-template-areas:
     "head  head  head"
     "cpu   gpu   chart"
@@ -160,9 +180,14 @@ body.landscape .canvas{
 /* ---------------- 顶部 ---------------- */
 .head{
   grid-area:head;
-  display:flex;align-items:center;justify-content:space-between;
+  display:flex;align-items:flex-start;justify-content:space-between;
   padding:2px 6px 2px;
   gap:14px;
+  min-height:0;
+}
+.clock-wrap{
+  display:flex;flex-direction:column;gap:6px;
+  min-width:0;flex:1;
 }
 .clock{
   /* 放大 + 加粗：竖屏 864 宽设计稿里 64px，观感更饱满；小视口自动缩回 */
@@ -174,28 +199,54 @@ body.landscape .canvas{
   text-shadow:0 2px 28px rgba(120,200,255,0.26);
 }
 .date{
-  font-size:14.5px;color:var(--text-dim);margin-top:4px;letter-spacing:1px;
+  font-size:14.5px;color:var(--text-dim);letter-spacing:1px;
 }
 
-/* 顶部天气（取代原来的网速区） */
-.weather-box{
-  text-align:right;
-  display:flex;flex-direction:column;gap:5px;align-items:flex-end;
+/* 时间下面的一言 */
+.quote{
+  display:flex;align-items:baseline;gap:8px;
+  font-size:12px;line-height:1.32;
+  max-width:100%;min-width:0;
+}
+.quote .q-text{
+  color:var(--text-dim);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.quote .q-from{
+  color:var(--text-mute);font-size:11px;
+  flex:0 0 auto;max-width:38%;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.quote .q-from:not(:empty)::before{content:"— ";}
+
+/* 右上：日期 + 历史上的今天 */
+.head-right{
+  display:flex;flex-direction:column;gap:5px;
+  align-items:flex-end;text-align:right;
+  flex:0 1 auto;min-width:0;max-width:48%;
+}
+.head-right .date{margin-top:0;font-size:15.5px;color:var(--text);letter-spacing:1.2px;}
+.hist-list{
+  list-style:none;
+  display:flex;flex-direction:column;gap:2px;
+  font-size:10.5px;line-height:1.34;
+  width:100%;min-width:0;
+  max-height:100%;overflow:hidden;
+}
+.hist-list li{
+  display:flex;gap:5px;align-items:baseline;
+  color:var(--text-mute);
   min-width:0;
 }
-.wx-main{
-  display:flex;align-items:center;gap:9px;
-  font-variant-numeric:tabular-nums;
+.hist-list li .y{
+  flex:0 0 auto;color:var(--cyan);font-variant-numeric:tabular-nums;
+  font-size:10px;opacity:.85;
 }
-.wx-icon{font-size:30px;line-height:1;filter:drop-shadow(0 0 12px rgba(255,200,120,0.4));}
-.wx-temp b{font-size:34px;font-weight:700;line-height:1;}
-.wx-temp i{font-style:normal;font-size:14px;color:var(--text-dim);margin-left:1px;}
-.wx-text{font-size:15.5px;color:var(--text-dim);letter-spacing:1px;}
-.wx-sub{
-  font-size:12px;color:var(--text-mute);
-  display:flex;align-items:center;gap:6px;flex-wrap:wrap;justify-content:flex-end;
+.hist-list li .t{
+  flex:1;min-width:0;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
 }
-.wx-sep{color:rgba(255,255,255,0.18);}
+.hist-list li.empty{justify-content:flex-end;opacity:.6;}
 
 /* ---------------- CPU / GPU 卡片 ---------------- */
 .card-cpu{grid-area:cpu;display:flex;flex-direction:column;}
@@ -425,24 +476,38 @@ body.landscape .canvas{
 .net-dot.down{background:var(--cyan);box-shadow:0 0 8px var(--cyan);}
 .net-dot.up{background:var(--pink);box-shadow:0 0 8px var(--pink);}
 
-.wifi-body{
+/* ---- 网络卡：左右分栏（左 WiFi，右 天气） ---- */
+.wifi-split{
   flex:1;min-height:0;
-  display:flex;gap:16px;align-items:stretch;
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:14px;
+  align-items:stretch;
+}
+.wifi-col{
+  display:flex;flex-direction:column;gap:8px;
+  min-width:0;min-height:0;
+}
+.wx-col{
+  display:flex;flex-direction:column;gap:8px;
+  min-width:0;min-height:0;
+  border-left:1px solid rgba(255,255,255,0.07);
+  padding-left:14px;
 }
 
 .kv-list{
   list-style:none;
-  flex:1.35;min-width:0;
+  flex:1;min-width:0;min-height:0;
   display:grid;
-  grid-template-columns:1fr 1fr;
+  grid-template-columns:1fr;
   grid-auto-rows:min-content;
-  gap:5px 20px;
+  gap:3px;
   align-content:space-between;
 }
 .kv-list li{
   display:flex;align-items:baseline;gap:8px;
   font-size:12.5px;
-  padding:2px 0;
+  padding:1px 0;
   min-width:0;
 }
 .kv-list .k{
@@ -457,9 +522,58 @@ body.landscape .canvas{
 }
 .kv-list .v.small{font-size:11px;color:var(--text-dim);}
 
+/* 今日天气 */
+.wx-today{
+  display:flex;flex-direction:column;gap:5px;
+  min-height:0;
+}
+.wx-today-main{
+  display:flex;align-items:center;gap:9px;
+  font-variant-numeric:tabular-nums;
+}
+.wx-icon{font-size:30px;line-height:1;flex:0 0 auto;
+  filter:drop-shadow(0 0 12px rgba(255,200,120,0.4));}
+.wx-temp{flex:0 0 auto;}
+.wx-temp b{font-size:32px;font-weight:700;line-height:1;}
+.wx-temp i{font-style:normal;font-size:13px;color:var(--text-dim);margin-left:1px;}
+.wx-today-txt{display:flex;flex-direction:column;gap:2px;min-width:0;}
+.wx-text{font-size:13.5px;color:var(--text-dim);letter-spacing:.5px;}
+.wx-range{font-size:11.5px;color:var(--text-mute);font-variant-numeric:tabular-nums;}
+.wx-sub{
+  font-size:11px;color:var(--text-mute);
+  display:flex;align-items:center;gap:5px;flex-wrap:wrap;
+}
+.wx-sep{color:rgba(255,255,255,0.18);}
+
+/* 七天预报 */
+.fc-list{
+  list-style:none;flex:1;min-height:0;
+  display:flex;flex-direction:column;
+  justify-content:space-between;
+  gap:2px;
+}
+.fc-list li{
+  display:grid;
+  grid-template-columns:1fr auto auto;
+  align-items:center;gap:8px;
+  font-size:11.5px;
+  padding:1px 0;
+  min-width:0;
+}
+.fc-list .fc-day{color:var(--text-dim);white-space:nowrap;}
+.fc-list .fc-day b{color:var(--text-mute);font-weight:400;font-size:10px;margin-left:4px;}
+.fc-list .fc-ico{font-size:12px;line-height:1;opacity:.9;}
+.fc-list .fc-tmp{
+  font-variant-numeric:tabular-nums;white-space:nowrap;
+  color:var(--text-dim);font-size:11px;
+}
+.fc-list .fc-tmp b{color:var(--text);font-weight:600;}
+.fc-list .fc-tmp i{font-style:normal;color:var(--text-mute);margin:0 2px;}
+.fc-list li.empty{display:flex;justify-content:center;color:var(--text-mute);}
+
 /* 下载速度折线图 */
 .net-chart-wrap{
-  flex:1;min-width:0;
+  flex:0 0 34%;min-width:0;min-height:0;
   display:flex;flex-direction:column;gap:4px;
   background:rgba(255,255,255,0.022);
   border:1px solid rgba(255,255,255,0.05);
@@ -677,18 +791,18 @@ body.landscape .canvas{
   line-height:1.5;opacity:.75;
   margin-top:4px;
 }
-/* 待机频谱（纯装饰，不表示真实音量） */
+/* 待机频谱（纯装饰，不表示真实音量）：压成一条窄带，别把整张卡占满 */
 .mu-eq{
   display:none;
-  flex:1;min-height:0;
+  flex:1;min-height:24px;
   align-items:flex-end;gap:3px;
   padding:6px 2px 2px;
-  opacity:.42;
+  opacity:.62;
 }
 .mu-lyric.idle .mu-eq{display:flex;}
 .mu-eq i{
   flex:1;border-radius:2px 2px 0 0;
-  background:linear-gradient(to top, var(--cyan-dim, rgba(79,209,197,0.35)), rgba(91,157,255,0.75));
+  background:linear-gradient(to top, rgba(79,209,197,0.55), rgba(91,157,255,0.9));
   transition:height .6s ease;
 }
 .ly-prev,
@@ -862,3 +976,47 @@ body.landscape .canvas{
 @media (prefers-reduced-motion:reduce){
   *{transition:none !important;animation:none !important;}
 }
+
+/* ---------------- 横屏专项压缩（v1.1） ----------------
+   横屏 1536x864 下 cpu/gpu 那一行总高只有 ~222px，而 GPU 卡要装
+   圆环(104) + 四路利用率 + 热点行 + 显存条，实测需要 264px → 溢出 42px。
+   同时 wifi 那一行只有 ~131px，8 项 kv-list 被压到 29px，数值挤成一团
+   还会和折线图重叠。这里只在 body.landscape 下压一档，竖屏完全不受影响。 */
+body.landscape .ring-sm{width:82px;height:82px;}
+body.landscape .util-row{margin-top:6px;}
+body.landscape .util-item label{font-size:9.5px;}
+body.landscape .util-item .ubar{margin-top:2px;}
+/* 热点 / 显存负载 / 核心电压这一排在横屏放不下（实测仍溢出 33px），
+   横屏下整排隐藏；这三项在竖屏主副屏上照常显示。 */
+body.landscape .gpu-extra{display:none;}
+body.landscape .vram-box{min-height:34px;margin-top:4px;padding:4px 7px;gap:2px;}
+body.landscape .vram-num b{font-size:11px;}
+body.landscape .cores{margin-top:5px;min-height:14px;}
+body.landscape .stat{padding:4px 8px;}
+body.landscape .stat b{font-size:15px;}
+/* WiFi 左半：8 项在横屏改 2 列（4 行），字号压一档才装得下 */
+body.landscape .kv-list{grid-template-columns:1fr 1fr;gap:2px 14px;}
+body.landscape .kv-list li{font-size:11px;padding:0;}
+body.landscape .kv-list .k{font-size:10.5px;}
+body.landscape .net-chart-wrap{flex:0 0 40%;}
+/* 存储卡：横屏的 disk 区只有 518px 宽，4 列时单卡仅 ~126px，
+   "已用 164.2/255.0 GB  剩余 90.8" 一行塞不下会被截断。
+   横屏改成 2 列 × 2 行，宽度翻倍，文字完整；竖屏仍是 4 列。 */
+body.landscape .disk-grid{grid-template-columns:repeat(2,1fr);grid-auto-rows:1fr;}
+body.landscape .disk-meta{font-size:9px;gap:4px;}
+body.landscape .disk-io{gap:5px;font-size:8.5px;}
+
+/* 七天预报：横屏右侧只有 ~117px 高，7 行按默认字号需要 131px（会被裁掉最后两行）。
+   这里把行高与字号压一档，7 行刚好放下。 */
+body.landscape .fc-list{gap:0;}
+body.landscape .fc-list li{font-size:10.5px;padding:0;gap:6px;}
+body.landscape .fc-list .fc-day b{font-size:9px;margin-left:3px;}
+body.landscape .fc-list .fc-ico{font-size:10.5px;}
+body.landscape .fc-list .fc-tmp{font-size:10px;}
+/* 温度卡横屏只有 ~84px 高：4 行（CPU/GPU/风扇1/风扇2）按默认字号+内边距会裁掉最后一行。
+   压缩内边距与行高，保证 4 行完整显示。 */
+body.landscape .card-temp{padding:7px 12px;}
+body.landscape .temp-list{gap:0;justify-content:space-between;}
+body.landscape .temp-list li{font-size:11px;padding:0;}
+body.landscape .temp-list .t-bar{width:34px;height:3px;}
+body.landscape .temp-list .t-val{width:34px;font-size:10.5px;}

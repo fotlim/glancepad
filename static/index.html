@@ -5,35 +5,30 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>副屏监控</title>
 <link rel="stylesheet" href="/static/style.css">
+<!-- 主题：字体 / 背景，由 /api/theme.css 按 settings.json 动态生成（必须放在 style.css 之后） -->
+<link rel="stylesheet" href="/api/theme.css">
 </head>
 <body>
-<div class="bg"></div>
+<div class="bg" id="bg"><img id="bgImg" alt=""></div>
 <div class="bg-veil"></div>
 
 <div class="stage" id="stage">
   <div class="canvas" id="canvas">
 
-    <!-- 顶部：时间 / 日期 / 天气 -->
+    <!-- 顶部：左 时间+一言 / 右 日期+历史上的今天 -->
     <header class="head">
       <div class="clock-wrap">
         <div class="clock" id="clock">--:--</div>
-        <div class="date" id="date">--月--日 星期-</div>
+        <div class="quote" id="quote">
+          <span class="q-text" id="quoteText">--</span>
+          <span class="q-from" id="quoteFrom"></span>
+        </div>
       </div>
-      <div class="weather-box" id="weatherBox">
-        <div class="wx-main">
-          <span class="wx-icon" id="wxIcon">🌡️</span>
-          <span class="wx-temp"><b id="wxTemp">--</b><i>°C</i></span>
-          <span class="wx-text" id="wxText">--</span>
-        </div>
-        <div class="wx-sub">
-          <span id="wxCity">--</span>
-          <span class="wx-sep">·</span>
-          <span id="wxRange">--/--</span>
-          <span class="wx-sep">·</span>
-          <span id="wxHum">湿度 --</span>
-          <span class="wx-sep">·</span>
-          <span id="wxWind">风 --</span>
-        </div>
+      <div class="head-right">
+        <div class="date" id="date">--月--日 星期-</div>
+        <ul class="hist-list" id="histList">
+          <li class="empty">历史上的今天…</li>
+        </ul>
       </div>
     </header>
 
@@ -135,40 +130,67 @@
       <canvas id="chart"></canvas>
     </section>
 
-    <!-- WiFi / 网络 -->
+    <!-- 网络（左）/ 天气（右） -->
     <section class="card card-wifi">
-      <div class="card-title">
-        <span class="tag tag-wifi">网络</span>
-        <span class="chip-name" id="wifiDesc">--</span>
-        <span class="net-speed">
-          <span class="net-dot down"></span><b id="netDown">0.0</b><i>Mbps</i>
-          <span class="net-dot up"></span><b id="netUp">0.0</b><i>Mbps</i>
-        </span>
-      </div>
-      <div class="wifi-body">
-        <ul class="kv-list" id="wifiList">
-          <li><span class="k">适配器名称</span><span class="v" id="wifiAdapter">--</span></li>
-          <li><span class="k">SSID</span><span class="v" id="wifiSsid">--</span></li>
-          <li><span class="k">连接类型</span><span class="v" id="wifiRadio">--</span></li>
-          <li><span class="k">频段 / 信道</span><span class="v" id="wifiBand">--</span></li>
-          <li><span class="k">IPv4 地址</span><span class="v" id="wifiV4">--</span></li>
-          <li><span class="k">IPv6 地址</span><span class="v small" id="wifiV6">--</span></li>
-          <li><span class="k">收发速率</span><span class="v" id="wifiRate">--</span></li>
-          <li class="sig-li">
-            <span class="k">信号强度</span>
-            <span class="v sig-wrap">
-              <span class="sig-bars" id="wifiBars"><i></i><i></i><i></i><i></i></span>
-              <span id="wifiSig">--</span>
+      <div class="wifi-split">
+        <!-- 左：WiFi -->
+        <div class="wifi-col">
+          <div class="card-title">
+            <span class="tag tag-wifi">网络</span>
+            <span class="chip-name" id="wifiDesc">--</span>
+            <span class="net-speed">
+              <span class="net-dot down"></span><b id="netDown">0.0</b><i>Mbps</i>
+              <span class="net-dot up"></span><b id="netUp">0.0</b><i>Mbps</i>
             </span>
-          </li>
-        </ul>
-        <!-- 下载速度折线图 -->
-        <div class="net-chart-wrap">
-          <div class="net-chart-head">
-            <span>下载速度</span>
-            <span class="net-peak">峰值 <b id="netPeak">0.0</b> Mbps</span>
           </div>
-          <canvas id="netChart"></canvas>
+          <ul class="kv-list" id="wifiList">
+            <li><span class="k">适配器名称</span><span class="v" id="wifiAdapter">--</span></li>
+            <li><span class="k">SSID</span><span class="v" id="wifiSsid">--</span></li>
+            <li><span class="k">连接类型</span><span class="v" id="wifiRadio">--</span></li>
+            <li><span class="k">频段 / 信道</span><span class="v" id="wifiBand">--</span></li>
+            <li><span class="k">IPv4 地址</span><span class="v" id="wifiV4">--</span></li>
+            <li><span class="k">IPv6 地址</span><span class="v small" id="wifiV6">--</span></li>
+            <li><span class="k">收发速率</span><span class="v" id="wifiRate">--</span></li>
+            <li class="sig-li">
+              <span class="k">信号强度</span>
+              <span class="v sig-wrap">
+                <span class="sig-bars" id="wifiBars"><i></i><i></i><i></i><i></i></span>
+                <span id="wifiSig">--</span>
+              </span>
+            </li>
+          </ul>
+          <!-- 下载速度折线图 -->
+          <div class="net-chart-wrap">
+            <div class="net-chart-head">
+              <span>下载速度</span>
+              <span class="net-peak">峰值 <b id="netPeak">0.0</b> Mbps</span>
+            </div>
+            <canvas id="netChart"></canvas>
+          </div>
+        </div>
+
+        <!-- 右：今日天气 + 七天预报 -->
+        <div class="wx-col">
+          <div class="wx-today">
+            <div class="wx-today-main">
+              <span class="wx-icon" id="wxIcon">🌡️</span>
+              <span class="wx-temp"><b id="wxTemp">--</b><i>°C</i></span>
+              <div class="wx-today-txt">
+                <span class="wx-text" id="wxText">--</span>
+                <span class="wx-range" id="wxRange">--/--</span>
+              </div>
+            </div>
+            <div class="wx-sub">
+              <span id="wxCity">--</span>
+              <span class="wx-sep">·</span>
+              <span id="wxHum">湿度 --</span>
+              <span class="wx-sep">·</span>
+              <span id="wxWind">风 --</span>
+            </div>
+          </div>
+          <ul class="fc-list" id="fcList">
+            <li class="empty">七天预报…</li>
+          </ul>
         </div>
       </div>
     </section>

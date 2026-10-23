@@ -70,8 +70,59 @@
   tickClock();
   setInterval(tickClock, 1000);
 
-  function fmtUptime(sec) {
-    if (!sec) return "已运行 --";
+  // ---------------- 外观（字体 / 背景）----------------
+  // 字体与背景模糊/透明度走 /api/theme.css（服务端按 settings.json 生成 CSS 变量），
+  // 这里只需要按 bg_mode / bg_effect 切 body class，并给背景图设 src。
+  const BG_CLASSES = ["bg-image", "bg-dim", "bg-none"];
+  let lastThemeKey = "";
+  async function applyTheme() {
+    let t = null;
+    try {
+      const r = await fetch("/api/theme", { cache: "no-store" });
+      t = await r.json();
+    } catch (e) { return; }
+    if (!t || !t.ok) return;
+
+    // 没变就别折腾画布（轮询 20 秒一次，避免无谓重绘）
+    const key = [t.bg_mode, t.bg_image, t.bg_effect, t.bg_blur, t.bg_opacity,
+                 t.font, t.font_file].join("|");
+    if (key === lastThemeKey) return;
+    lastThemeKey = key;
+
+    BG_CLASSES.forEach((c) => document.body.classList.remove(c));
+    const img = $("bgImg");
+    const hasImg = !!(t.bg_mode === "image" && t.bg_image);
+    if (hasImg) {
+      const eff = t.bg_effect || "blur";
+      document.body.classList.add(eff === "none" ? "bg-none" : (eff === "dim" ? "bg-dim" : "bg-image"));
+      if (img) {
+        img.src = "/backgrounds/" + encodeURIComponent(t.bg_image);
+        img.onerror = () => { if (img) img.style.display = "none"; };
+      }
+    } else if (img) {
+      img.removeAttribute("src");
+    }
+
+    // 字体：/api/theme.css 是动态生成的，改完设置要让页面真的用上新字体。
+    // <link> 不会自己重新请求，所以这里把它换成一份即时抓下来、塞进 <style> 的副本。
+    try {
+      const cr = await fetch("/api/theme.css", { cache: "no-store" });
+      const css = await cr.text();
+      let st = document.getElementById("themeCssLive");
+      if (!st) {
+        st = document.createElement("style");
+        st.id = "themeCssLive";
+        document.head.appendChild(st);
+      }
+      st.textContent = css;
+      const lk = document.querySelector('link[href="/api/theme.css"]');
+      if (lk) lk.disabled = true;   // 避免两份规则打架
+    } catch (e) { /* 取不到就沿用 <link> 的默认样式 */ }
+
+    setTimeout(() => { fitScale(); drawChart(); fitNetCanvas(); drawNetChart(); }, 60);
+  }
+
+  function fmtUptime(sec) {    if (!sec) return "已运行 --";
     const d = Math.floor(sec / 86400);
     const h = Math.floor((sec % 86400) / 3600);
     const m = Math.floor((sec % 3600) / 60);
@@ -476,6 +527,11 @@
 
   const num = (v, d = 0) => (v === null || v === undefined ? "--" : (typeof v === "number" ? v.toFixed(d) : v));
 
+  // 历史上的今天 / 天气文案都是外部数据，塞进 innerHTML 前必须转义
+  const esc = (s) => String(s == null ? "" : s)
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+
   function setBar(el, pct, color) {
     if (!el) return;
     const p = Math.max(0, Math.min(100, pct || 0));
@@ -508,7 +564,34 @@
       gsrc.classList.toggle("on", !!(S.lhm || S.nvidia));
     }
 
-    // ---- 顶部天气 ----
+    // ---- 顶部一言（时间下面）----
+    const qt = d.quote || {};
+    const qText = $("quoteText");
+    const qFrom = $("quoteFrom");
+    if (qText) {
+      qText.textContent = qt.text || "心之所向，素履以往。";
+      if (qFrom) {
+        const who = (qt.from || qt.who || "").trim();
+        qFrom.textContent = who ? `— ${who}` : "";
+        qFrom.style.display = who ? "" : "none";
+      }
+    }
+
+    // ---- 右上：历史上的今天（日期由 tickClock 写）----
+    const hs = d.history || {};
+    const hl = $("histList");
+    if (hl) {
+      const items = (hs.items || []).slice(0, 5);
+      if (!items.length) {
+        hl.innerHTML = '<li class="empty">历史上的今天暂无数据</li>';
+      } else {
+        hl.innerHTML = items.map((it) =>
+          `<li title="${esc(it.title)}"><span class="y">${it.year}</span>` +
+          `<span class="t">${esc(it.title)}</span></li>`).join("");
+      }
+    }
+
+    // ---- 网络卡右侧：今日天气 + 七天预报 ----
     const wx = d.weather || {};
     if (wx.ok) {
       $("wxIcon").textContent = wx.icon || "🌡️";
@@ -516,12 +599,25 @@
       $("wxText").textContent = wx.text || "--";
       $("wxCity").textContent = wx.city || "--";
       $("wxRange").textContent =
-        (wx.high != null && wx.low != null) ? `${wx.high}°/${wx.low}°` : "--";
+        (wx.high != null && wx.low != null) ? `${wx.high}° / ${wx.low}°` : "--";
       $("wxHum").textContent = wx.humidity != null ? `湿度 ${wx.humidity}%` : "湿度 --";
       $("wxWind").textContent = wx.wind != null ? `风 ${wx.wind.toFixed(1)}m/s` : "风 --";
+      const fc = $("fcList");
+      const days = wx.days || [];
+      if (fc) {
+        fc.innerHTML = days.length
+          ? days.map((x) => `<li title="${esc(x.text || "")}${x.pop != null ? " 降水 " + x.pop + "%" : ""}">
+              <span class="fc-day">${esc(x.label)}<b>${esc(x.date || "")}</b></span>
+              <span class="fc-ico">${x.icon || ""}</span>
+              <span class="fc-tmp"><b>${x.max ?? "--"}°</b><i>/</i>${x.min ?? "--"}°</span>
+            </li>`).join("")
+          : '<li class="empty">暂无预报</li>';
+      }
     } else {
       $("wxText").textContent = wx.hint || "天气不可用";
       $("wxIcon").textContent = "🌡️";
+      const fc = $("fcList");
+      if (fc) fc.innerHTML = '<li class="empty">暂无预报</li>';
     }
     // 顶部时间 / 日期由 tickClock 负责
 
@@ -656,21 +752,32 @@
 
     $("uptime").textContent = fmtUptime(d.uptime);
 
-    // ---- 温度列表 ----
+    // ---- 温度列表（温度 + 两个风扇位）----
     const tl = $("tempList");
     const temps = d.temps || [];
-    if (temps.length === 0) {
-      tl.innerHTML = '<li class="empty">暂无温度源</li>';
-    } else {
-      tl.innerHTML = temps.map((t) => {
-        const p = Math.max(0, Math.min(100, (t.value / 100) * 100));
-        const c = heatColor(t.value, 65, 85);
-        return `<li>
+    const fans = d.fans || [];
+    const rows = [];
+    temps.forEach((t) => {
+      const p = Math.max(0, Math.min(100, (t.value / 100) * 100));
+      const c = heatColor(t.value, 65, 85);
+      rows.push(`<li>
           <span class="t-name">${t.label}</span>
           <span class="t-bar"><i style="width:${p}%;background:${c}"></i></span>
           <span class="t-val" style="color:${c}">${t.value}${t.unit}</span>
-        </li>`;
-      }).join("");
+        </li>`);
+    });
+    // 风扇：读不到就显示 -- RPM（这块主板的 SuperIO 不被 LHM 识别）
+    fans.forEach((f) => {
+      const has = f.value !== null && f.value !== undefined;
+      const v = has ? `${Math.round(f.value)}` : "--";
+      rows.push(`<li title="${has ? "" : "本机主板 SuperIO 未被 LibreHardwareMonitor 识别，读不到风扇转速"}">
+          <span class="t-name">${f.label}</span>
+          <span class="t-bar"><i style="width:${has ? Math.min(100, f.value / 30) : 0}%;background:#5b9dff"></i></span>
+          <span class="t-val" style="color:${has ? "#9ec8ff" : "var(--text-mute)"}">${v}<i style="font-size:9px;margin-left:1px">RPM</i></span>
+        </li>`);
+    });
+    if (tl) {
+      tl.innerHTML = rows.length ? rows.join("") : '<li class="empty">暂无温度源</li>';
     }
 
     // ---- 存储：每盘一块 ----
@@ -849,8 +956,8 @@
 
   // ---------------- 调试：把关键元素矩形打进 DOM（?debug=1，配 chrome --dump-dom 用） ----------------
   function dumpRects() {
-    const ids = ["canvas", "head", "chart", "netChart", "netPeak",
-                 "tempList", "diskList", "dock", "uptime", "muBody"];
+    const ids = ["canvas", "head", "chart", "netChart", "netPeak", "muEq", "muLyric",
+                 "tempList", "diskList", "dock", "uptime", "muBody", "fcList", "wxCol"];
     const out = {};
     ids.forEach((id) => {
       const el = $(id);
@@ -873,6 +980,13 @@
       const r = el.getBoundingClientRect();
       out["el:" + el.className.split(" ")[0]] = [Math.round(r.x), Math.round(r.y), Math.round(r.width), Math.round(r.height)];
     });
+    const fcEl = $("fcList");
+    if (fcEl) {
+      out["fc:count"] = fcEl.children.length;
+      out["fc:scrollH"] = fcEl.scrollHeight;
+      const lastKid = fcEl.lastElementChild;
+      if (lastKid) out["fc:lastBottom"] = Math.round(fcEl.getBoundingClientRect().bottom - lastKid.getBoundingClientRect().bottom);
+    }
     const pre = document.createElement("pre");
     pre.id = "dbg";
     pre.textContent = "DBGJSON" + JSON.stringify(out) + "ENDDBG";
@@ -888,6 +1002,9 @@
     bindMedia();
     startEq();
     pollMedia();
+    applyTheme();
+    // 设置里改了字体/背景，副屏不用刷新就能跟着变
+    setInterval(() => { if (!document.hidden) applyTheme(); }, 20000);
     if (STATIC_MODE) {
       staticOnce();
       // 截图模式下也读一次媒体/音量状态

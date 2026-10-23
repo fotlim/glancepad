@@ -3,6 +3,43 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.1.0] - 2026-10-23
+
+外观与信息密度的一次大改版。
+
+### 新增
+
+- **每日一言**：顶部时钟下方显示一言（[hitokoto](https://hitokoto.cn/) 的 `d/i/k` 分类），按天缓存 30 分钟，取不到时用内置句子兜底。
+- **历史上的今天**：右上角日期下方列出当天 8 条历史事件（数据来自百度百科 `eventsOnHistory`），年份倒序，标题自动剥掉 HTML 标签。
+- **七天天气预报**：网络卡右半新增今日天气（图标 / 温度 / 天气现象 / 高低温 / 城市 / 湿度 / 风速）+ 逐日预报列表（日期 / 图标 / 高低温 / 降水概率 title）。
+- **副屏选择**：设置窗口新增「显示」页签，下拉列出 `EnumDisplayMonitors` 枚举到的全部显示器（含分辨率、坐标、主屏标记），可手动指定哪一块当副屏。写入 `settings.json` 的 `screen` 字段（`0` = 自动挑非主屏），下次启动生效。`start_monitor.ps1 -Screen N` 仍可临时覆盖。
+- **自定义字体**：设置窗口可导入 `.ttf / .otf / .ttc`，文件复制到程序目录 `fonts/`，通过 `/api/theme.css` 动态下发 `@font-face` + `--font-family`，**只对本程序生效、不装进系统**。
+- **自定义背景**：可导入图片到 `backgrounds/`，三种处理方式（高斯模糊 0~60px / 压暗 / 原图）+ 不透明度 10%~100%。
+- **新路由**：`/api/theme`、`/api/theme.css`、`/api/files`、`/api/screens`、`/fonts/<name>`、`/backgrounds/<name>`。
+
+### 变更
+
+- **顶部的天气框整体移除**，天气搬到网络卡右半，与 WiFi 信息左右分栏。
+- **网络卡改左右分栏**：左半是原来的 WiFi 信息 + 下载速度折线，右半是今日天气 + 七天预报。
+- **温度监控瘦身**：去掉 GPU Hotspot / CPU CCD1 / SoC 三项，改为显示 **风扇 1 / 风扇 2 转速**。本机主板 SuperIO 未被 LHM 识别时显示 `-- RPM` 并在 title 里说明原因；将来驱动能读到会自动填上。
+- `settings.json` 新增 8 个键（`screen` / `font` / `font_file` / `bg_mode` / `bg_image` / `bg_effect` / `bg_blur` / `bg_opacity`）。老配置**自动补齐缺失键**，用户已有的值不动。
+- 横屏布局重排：`grid-template-rows` 改为 `0.62fr 1.46fr 1.30fr 1.46fr 0.46fr`，存储卡从 4 列改 **2 列 × 2 行**，温度/内存卡加高，网络卡加高。
+
+### 修复
+
+- **自定义字体完全不生效**：`@font-face` 被拼进了 `:root{}` 内部，CSS 规则非法被整条丢弃。改为把 `@font-face` 放在 `:root{}` 之前作为顶层规则。
+- **横屏 GPU 卡内容溢出 45px**：四路利用率 + 显存条 + 附加信息挤不进 234px 高的卡片。横屏下隐藏 `.gpu-extra`（热点/显存负载/核心电压，这三项与上方统计信息重复），圆环缩到 82px。
+- **横屏 WiFi 8 项被压成 22px 高、文字重叠**：`card-wifi` 行高不足。行高从 0.86fr 提到 1.30fr，`.kv-list` 横屏改 2 列排布。
+- **横屏存储卡「剩余」数值被右边界截断**：4 列时单卡只有 ~126px 宽。改 2 列 × 2 行，字号压一档。
+- **横屏七天预报只显示 5 行**（应为 7 行，最后两行被裁）：`.fc-list` 固定行高 + 字号压一档，实测 `scrollHeight 131 → 110`、`lastBottom -47 → 0`。
+- **WiFi 显示「未检测到 WiFi 连接」**（连接的网正常时）：Windows 把 SSID 当位置信息，定位服务总开关关闭时 `netsh` 直接 `error 5: Access is denied`。文档里给了开启方法；同时新增 `Get-NetConnectionProfile` 兜底（定位关着也能显示 SSID 与网卡，只缺信号强度与信道）。
+- **中文 `netsh` 字段名不兼容**：`AP BSSID`（原来只匹配 `BSSID`）、`波段`（原来只匹配 `频带`）导致 BSSID 与频段恒为空。
+
+### 已知限制
+
+- 风扇转速依赖主板 SuperIO 被 LibreHardwareMonitor 识别，部分主板（如开发测试用的 `X5`）读不到，显示 `-- RPM`。
+- 副屏选择需要**重启监控**才生效（kiosk 窗口创建时就要确定位置与尺寸）。
+
 ## [1.0.3] - 2026-10-22
 
 ### 修复
@@ -78,6 +115,7 @@
 - AIDA64 通道需要手动在「设置 → 外部应用程序」里勾选「允许共享内存」或「允许将监测数据写入注册表」；AIDA64 的界面是 Delphi 自绘，无法可靠自动化，故本版本不做自动开启。
 - 歌词中文匹配依赖 lrclib / 网易云曲库，冷门歌曲可能搜不到。
 
+[1.1.0]: https://github.com/fotlim/glancepad/releases/tag/v1.1.0
 [1.0.3]: https://github.com/fotlim/glancepad/releases/tag/v1.0.3
 [1.0.2]: https://github.com/fotlim/glancepad/releases/tag/v1.0.2
 [1.0.1]: https://github.com/fotlim/glancepad/releases/tag/v1.0.1
