@@ -99,8 +99,10 @@ body.portrait .canvas{
   width:864px;height:1536px;
   grid-template-columns:1fr 1fr;
   /* CPU/GPU 行收紧、存储行压矮，省下的高度给 内存+温度+播放器 和 网络图
-     head 行从 0.50fr 加到 0.80fr：时间下面要放一言，右上还要放日期+历史上的今天 */
-  grid-template-rows:0.68fr 1.24fr 0.70fr 1.24fr 1.38fr 0.76fr 0.50fr;
+     head 行：时间（64px 大字）+ 一言 + 右侧日期和历史上的今天，内容实高约 122px。
+     原先给 0.68fr（≈175px）会多出 50 多 px 死空白，时钟到下面卡片之间空一大块；
+     收紧到 0.50fr（≈132px）刚好贴住内容，省下的高度均分给下面几行。 */
+  grid-template-rows:auto 1.24fr 0.70fr 1.24fr 1.38fr 0.76fr 0.50fr;
   grid-template-areas:
     "head  head"
     "cpu   gpu"
@@ -119,8 +121,10 @@ body.landscape .canvas{
      装不下 70px 圆环 + 底部「共/保留/插槽」，圆环直接压住文字。
      wifi 行给到 1.14fr（约 185px）：左半要塞 8 项 WiFi 信息（横屏改 2 列 = 4 行）
      + 下载速度折线，0.86fr 只有 138px、kv-list 被压到 22px 完全挤爆。
-     多出来的高度从 head / row2 挤，总 fr 仍是 5.30。 */
-  grid-template-rows:0.58fr 1.44fr 1.26fr 1.56fr 0.44fr;
+     多出来的高度从 head / row2 挤，总 fr 仍是 5.30。
+     head 行 0.44fr（≈135px）刚好贴住「时钟 63px + 一言 17px」与右侧日期+历史列表，
+     再大就会在时钟和下面卡片之间空出一整块。 */
+  grid-template-rows:auto 1.44fr 1.26fr 1.56fr 0.44fr;
   grid-template-areas:
     "head  head  head"
     "cpu   gpu   chart"
@@ -180,18 +184,22 @@ body.landscape .canvas{
 /* ---------------- 顶部 ---------------- */
 .head{
   grid-area:head;
-  display:flex;align-items:flex-start;justify-content:space-between;
-  padding:2px 6px 2px;
+  display:flex;align-items:stretch;justify-content:space-between;
+  /* 底部内边距压到 0，再用负外边距吃掉 .canvas 的行间距（12px），
+     让一言几乎贴住下面 CPU 卡的上边框 */
+  padding:0 6px 0;
+  margin-bottom:-10px;
   gap:14px;
   min-height:0;
 }
 .clock-wrap{
-  display:flex;flex-direction:column;gap:6px;
+  /* 左边「时间 + 一言」整体贴底（紧邻下面的卡片），和右侧「日期 + 历史列表」底对齐 */
+  display:flex;flex-direction:column;justify-content:flex-end;gap:4px;
   min-width:0;flex:1;
 }
 .clock{
-  /* 放大 + 加粗：竖屏 864 宽设计稿里 64px，观感更饱满；小视口自动缩回 */
-  font-size:clamp(44px,6.4vh,64px);
+  /* 顶部主视觉：竖屏设计稿 78px，小视口自动缩回 */
+  font-size:clamp(52px,8.6vh,78px);
   font-weight:700;
   letter-spacing:1.5px;
   line-height:1;
@@ -205,7 +213,7 @@ body.landscape .canvas{
 /* 时间下面的一言 */
 .quote{
   display:flex;align-items:baseline;gap:8px;
-  font-size:12px;line-height:1.32;
+  font-size:13.5px;line-height:1.4;
   max-width:100%;min-width:0;
 }
 .quote .q-text{
@@ -213,7 +221,7 @@ body.landscape .canvas{
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
 }
 .quote .q-from{
-  color:var(--text-mute);font-size:11px;
+  color:var(--text-mute);font-size:12px;
   flex:0 0 auto;max-width:38%;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
 }
@@ -221,17 +229,25 @@ body.landscape .canvas{
 
 /* 右上：日期 + 历史上的今天 */
 .head-right{
-  display:flex;flex-direction:column;gap:5px;
+  display:flex;flex-direction:column;gap:4px;
   align-items:flex-end;text-align:right;
-  flex:0 1 auto;min-width:0;max-width:48%;
+  flex:0 1 auto;min-width:0;max-width:56%;
 }
-.head-right .date{margin-top:0;font-size:15.5px;color:var(--text);letter-spacing:1.2px;}
+.head-right .date{
+  margin-top:0;
+  font-size:32px;font-weight:600;line-height:1.1;
+  color:var(--text);letter-spacing:1.5px;
+  font-variant-numeric:tabular-nums;
+}
 .hist-list{
   list-style:none;
-  display:flex;flex-direction:column;gap:2px;
-  font-size:10.5px;line-height:1.34;
+  display:flex;flex-direction:column;gap:4px;
+  font-size:13px;line-height:1.62;
   width:100%;min-width:0;
   max-height:100%;overflow:hidden;
+  /* 外层 .head-right 是 text-align:right，会把年份和标题拉开成两列、看着不相干；
+     列表内部强制左对齐，年份紧贴事件文字 */
+  text-align:left;
 }
 .hist-list li{
   display:flex;gap:5px;align-items:baseline;
@@ -240,13 +256,18 @@ body.landscape .canvas{
 }
 .hist-list li .y{
   flex:0 0 auto;color:var(--cyan);font-variant-numeric:tabular-nums;
-  font-size:10px;opacity:.85;
+  font-size:11px;opacity:.9;
 }
 .hist-list li .t{
   flex:1;min-width:0;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
 }
 .hist-list li.empty{justify-content:flex-end;opacity:.6;}
+
+/* 横屏 head 行矮（约 105px）：日期 35px，历史列表要压紧才放得下。
+   横屏只显示前 4 条 + 小一号字号紧行距；竖屏行高够，仍然是 5 条正常行距。 */
+body.landscape .hist-list{font-size:11px;line-height:1.42;gap:2px;}
+body.landscape .hist-list li:nth-child(n+5){display:none;}
 
 /* ---------------- CPU / GPU 卡片 ---------------- */
 .card-cpu{grid-area:cpu;display:flex;flex-direction:column;}
@@ -544,6 +565,13 @@ body.landscape .canvas{
   display:flex;align-items:center;gap:5px;flex-wrap:wrap;
 }
 .wx-sep{color:rgba(255,255,255,0.18);}
+/* 气象预警（中国天气网有，open-meteo 没有）：单行省略，别把 wx-col 撑乱 */
+.wx-alarm{
+  font-size:10.5px;line-height:1.3;
+  color:var(--amber);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  min-width:0;
+}
 
 /* 七天预报 */
 .fc-list{

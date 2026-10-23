@@ -72,6 +72,16 @@ _defaults = {
     "bg_effect": "blur",    # blur / dim / none
     "bg_blur": 18,          # 模糊半径 px
     "bg_opacity": 100,      # 背景图不透明度 %
+    # ---- v1.1.1 新增 ----
+    # 一言接口。默认走 hitokoto.cn；{cats} 会替换成 quote_cats（留空则不替换）。
+    # 也可以填任意返回 JSON 的地址，字段名支持 hitokoto/text/content 三种。
+    "quote_api": "https://v1.hitokoto.cn/?c={cats}",
+    "quote_cats": "d,i,k",  # hitokoto 分类：d 文学 i 诗词 k 哲学
+    "quote_refresh": 30,    # 一言刷新间隔（分钟），0=每天只换一次
+    # ---- v1.1.1 新增：天气源 ----
+    # auto = 优先中国天气网（中国气象局站点），失败自动回退 open-meteo
+    # cn   = 只用中国天气网；open-meteo = 只用 open-meteo
+    "weather_src": "auto",
 }
 
 _settings_cache = {"t": 0.0, "v": None}
@@ -336,20 +346,280 @@ def _http_json(url, timeout=6):
         return json.loads(r.read().decode("utf-8", "replace"))
 
 
+# ---------------------------------------------------------------- 中国天气网（主源）
+# 中国气象局官方数据，国内站点精度明显好于 open-meteo 的网格插值，
+# 而且支持用中文城市名搜站点码、带 AQI 与气象预警。
+_UA_CN = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                  "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Referer": "http://www.weather.com.cn/",
+}
+
+# 中文天气文字 -> emoji（中国天气网给的是「多云转阴」这种，只能靠关键词判断）
+_CN_ICONS = [
+    ("雷", "⛈️"), ("冰雹", "⛈️"),
+    ("暴雪", "❄️"), ("大雪", "❄️"), ("中雪", "🌨️"), ("小雪", "🌨️"), ("雪", "🌨️"),
+    ("暴雨", "🌧️"), ("大雨", "🌧️"), ("中雨", "🌧️"), ("小雨", "🌦️"), ("雨", "🌦️"),
+    ("雾", "🌫️"), ("霾", "🌫️"), ("沙", "🌪️"), ("尘", "🌪️"),
+    ("晴", "☀️"), ("云", "⛅"), ("阴", "☁️"),
+]
+
+_cn_code_cache = {"t": 0.0, "city": "", "code": ""}
+_cn_CODE_TTL = 7 * 24 * 3600.0     # 城市码基本不变，一周内不用重查
+
+
+def _cn_icon(text, code=""):
+    """按中文天气文字猜 emoji；文字判断不出来再看 d01..dXX 代码。"""
+    t = text or ""
+    for kw, ic in _CN_ICONS:
+        if kw in t:
+            # 「晴转阴」这种以第一个字为准，避免整句被后面的词抢走
+            if len(t) > 1 and t[0] + "转" == t[:2]:
+                for kw2, ic2 in _CN_ICONS:
+                    if kw2 in t[0]:
+                        return ic2
+            return ic
+    if code:
+        try:
+            n = int(re.sub(r"\D", "", code) or "0")
+        except Exception:
+            n = 0
+        return _WMO.get(n, ("", "🌡️"))[1] or "🌡️"
+    return "🌡️"
+
+
+def _cn_request(url, timeout=8):
+    req = urllib.request.Request(url, headers=_UA_CN)
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        return r.read().decode("utf-8", "replace")
+
+
+def _cn_city_code(city, force=False):
+    """中文城市名 -> 中国天气网站点码（如 长春 -> 101060101）。"""
+    city = (city or "").strip()
+    if not city:
+        return ""
+    now = time.time()
+    if (not force and _cn_code_cache["city"] == city
+            and now - _cn_code_cache["t"] < _cn_CODE_TTL and _cn_code_cache["code"]):
+        return _cn_code_cache["code"]
+
+    # 中国天气网对「长春市」这种带后缀的查法会优先返回景点（码带字母后缀），
+    # 拿不到市级码，所以原名查不到就再去掉「市/县/区」重试一次。
+    # 另外用户可能填「吉林省长春市」这种带省前缀的写法，直接查是空结果，
+    # 要按 省/自治区/特别行政区 切开只留最后一段（长春市）再查。
+    tries = [city]
+    tail = city
+    mprov = re.split(r"(?:省|自治区|特别行政区)", city)
+    if len(mprov) > 1:
+        tail = mprov[-1].strip()
+        if tail and tail not in tries:
+            tries.append(tail)
+    bare = re.sub(r"(市|县|区|自治州|地区|盟)$", "", tail)
+    if bare and bare not in tries:
+        tries.append(bare)
+
+    for name in tries:
+        url = "http://toy1.weather.com.cn/search?cityname=" + urllib.parse.quote(name)
+        try:
+            txt = _cn_request(url).strip()
+            # 返回形如 ({...},{...}) 或直接 [...]
+            txt = txt.lstrip("(").rstrip(")").strip()
+            if not txt or txt in ("()", "[]"):
+                continue
+            arr = json.loads(txt)
+            if isinstance(arr, dict):
+                arr = [arr]
+            code = ""
+            for it in arr or []:
+                ref = str(it.get("ref") or "")
+                c = ref.split("~")[0]
+                # 只认纯数字的市级码（景点码带字母后缀，如 10106010101A）
+                if c.isdigit() and len(c) == 9:
+                    code = c
+                    break
+            if code:
+                _cn_code_cache.update(t=now, city=city, code=code)
+                return code
+        except Exception as e:
+            log.debug("中国天气网 城市码查询失败(%s): %s", name, e)
+    return ""
+
+
+def _cn_weather(city):
+    """中国天气网当前天气 + 七天预报。取不到抛异常，由 weather() 兜底。"""
+    code = _cn_city_code(city)
+    if not code:
+        raise RuntimeError("查不到该城市的中国天气网站点码")
+
+    # --- 现在 ---
+    sk_txt = _cn_request("http://d1.weather.com.cn/sk_2d/%s.html" % code)
+    m = re.search(r"=\s*(\{.*\})", sk_txt, re.S)
+    if not m:
+        raise RuntimeError("实时天气格式变了")
+    sk = json.loads(m.group(1))
+
+    # --- 七天 ---
+    page = _cn_request("http://www.weather.com.cn/weather/%s.shtml" % code)
+    days = []
+    i = page.find('class="t clearfix"')
+    if i > 0:
+        j = page.find("</ul>", i)
+        blk = page[i:j if j > 0 else i + 6000]
+        for it in re.findall(r'<li class="sky[^"]*">(.*?)</li>', blk, re.S):
+            m1 = re.search(r"<h1>(.*?)</h1>", it, re.S)
+            mw = re.search(r'<p[^>]*class="wea"[^>]*>(.*?)</p>', it, re.S)
+            mt = re.search(r'class="tem">(.*?)</p>', it, re.S)
+            hi = re.search(r"<span>(-?\d+)</span>", mt.group(1)) if mt else None
+            lo = re.search(r"<i>(-?\d+)", mt.group(1)) if mt else None
+            h1 = (m1.group(1).strip() if m1 else "")
+            wea = (mw.group(1).strip() if mw else "")
+            # "23日（今天）" -> date=10/23, label=今天
+            md = re.match(r"(\d{1,2})日[（(](.*?)[）)]", h1)
+            if md:
+                day = int(md.group(1))
+                label = md.group(2)
+                date = "%d/%d" % (time.localtime().tm_mon, day)
+            else:
+                label, date = h1, h1
+            days.append({
+                "label": label,
+                "date": date,
+                "max": int(hi.group(1)) if hi else None,
+                "min": int(lo.group(1)) if lo else None,
+                "icon": _cn_icon(wea),
+                "text": wea or "未知",
+                "pop": None,
+            })
+
+    # --- 预警（有就带一条，没有就空）---
+    alarm = ""
+    try:
+        dz = _cn_request("http://d1.weather.com.cn/dingzhi/%s.html" % code)
+        # 注意：这个文件末尾不一定有分号（实测长春返回以 "}]}" 结尾），
+        # 所以分号必须可选，否则整条预警解析不出来。
+        mz = re.search(r"alarmDZ\d*\s*=\s*(\{.*\})", dz, re.S)
+        if mz:
+            aw = (json.loads(mz.group(1)).get("w") or [])
+            if aw:
+                alarm = str(aw[0].get("w13") or aw[0].get("w5") or "").strip()
+    except Exception:
+        pass
+
+    temp = None
+    try:
+        temp = round(float(sk.get("temp")), 1)
+    except Exception:
+        pass
+
+    txt = str(sk.get("weather") or "").strip()
+    hum = None
+    try:
+        hum = int(re.sub(r"%", "", str(sk.get("SD") or sk.get("sd") or "")) or 0) or None
+    except Exception:
+        pass
+    wind = None
+    try:
+        # WS 是「3级」，wse 是「14km/h」，换算成 m/s
+        wse = str(sk.get("wse") or "")
+        mm = re.search(r"([\d.]+)\s*km", wse)
+        if mm:
+            wind = round(float(mm.group(1)) / 3.6, 1)
+    except Exception:
+        pass
+
+    if not days:
+        raise RuntimeError("七天预报解析为空")
+
+    return {
+        "ok": True,
+        "source": "weather.com.cn",
+        "city": str(sk.get("cityname") or city),
+        "temp": temp,
+        "feels": None,
+        "text": txt or days[0]["text"],
+        "icon": _cn_icon(txt, sk.get("weathercode") or ""),
+        "code": None,
+        "humidity": hum,
+        "wind": wind,
+        "wind_dir": str(sk.get("WD") or ""),
+        "is_day": None,
+        "high": days[0]["max"],
+        "low": days[0]["min"],
+        "hourly": [],
+        "days": days,
+        "aqi": sk.get("aqi"),
+        "alarm": alarm,
+        "updated": int(time.time()),
+    }
+
+
+def _geo_lookup(city):
+    """城市名 -> (lat, lon)。给 open-meteo 兜底用，避免经纬度和城市名对不上。"""
+    city = (city or "").strip()
+    if not city:
+        return None
+    for name in (city, city.rstrip("市"), city.rstrip("市") + "市"):
+        if not name:
+            continue
+        u = ("https://geocoding-api.open-meteo.com/v1/search?name=%s"
+             "&count=1&language=zh&format=json" % urllib.parse.quote(name))
+        try:
+            d = _http_json(u)
+            res = d.get("results") or []
+            if res:
+                return (res[0].get("latitude"), res[0].get("longitude"))
+        except Exception:
+            continue
+    return None
+
+
 def weather():
-    """open-meteo 当前天气 + 未来几小时预报。失败返回上一份缓存。"""
+    """当前天气 + 未来几小时预报 + 七天预报。
+
+    主源：中国天气网（weather.com.cn，中国气象局数据，国内更准）
+    兜底：open-meteo.com（免费无 key，经纬度会按城市名自动校正）
+    两个都失败就返回上一份缓存。
+    """
     st = settings()
     if not st.get("weather", True):
         return {"ok": False, "hint": "天气已关闭"}
 
     now = time.time()
-    if now - _weather_cache["t"] < _WEATHER_TTL and _weather_cache["v"]:
+    # 兜底结果（open-meteo）用短 TTL，主源结果用正常 TTL：
+    # 否则开机第一帧主源偶发失败时，会把 open-meteo 的读数缓存 10 分钟，
+    # 页面长时间没有 AQI / 预警，看起来像「天气不准」。
+    _ttl = _weather_cache.get("ttl") or _WEATHER_TTL
+    if now - _weather_cache["t"] < _ttl and _weather_cache["v"]:
         v = dict(_weather_cache["v"])
         v["cached"] = True
         return v
 
+    city = (st.get("city") or "").strip()
+    src = (st.get("weather_src") or "auto").lower()
+
+    # ---- 主源：中国天气网 ----
+    if city and src in ("auto", "cn", "weather.com.cn"):
+        try:
+            v = _cn_weather(city)
+            _weather_cache.update(t=now, v=v, ttl=_WEATHER_TTL)
+            return v
+        except Exception as e:
+            log.debug("中国天气网失败，转 open-meteo: %s", e)
+
     lat = st.get("latitude", 30.2741)
     lon = st.get("longitude", 120.1551)
+    # 城市名和经纬度对不上时（比如城市改成长春但坐标还是杭州的默认值），
+    # 用城市名反查一次坐标，别拿错地方的天气糊弄人。
+    if city:
+        g = _geo_lookup(city)
+        if g and g[0] is not None and g[1] is not None:
+            try:
+                if abs(float(g[0]) - float(lat)) > 1.5 or abs(float(g[1]) - float(lon)) > 1.5:
+                    log.info("坐标与城市不符，按「%s」校正为 %s,%s", city, g[0], g[1])
+                    lat, lon = g[0], g[1]
+            except Exception:
+                lat, lon = g[0], g[1]
     q = urllib.parse.urlencode({
         "latitude": lat,
         "longitude": lon,
@@ -434,6 +704,7 @@ def weather():
 
         v = {
             "ok": True,
+            "source": "open-meteo",
             "city": st.get("city") or "本地",
             "temp": round(float(cur.get("temperature_2m")), 1)
                     if cur.get("temperature_2m") is not None else None,
@@ -460,12 +731,13 @@ def weather():
             return v
         return {"ok": False, "hint": "天气数据异常"}
 
-    _weather_cache.update(t=now, v=v)
+    # 这是兜底源的结果，只缓存 60 秒，好让下一次请求还能回到中国天气网主源
+    _weather_cache.update(t=now, v=v, ttl=60.0)
     return v
 
 
 # ---------------------------------------------------------------- 一言 / 历史上的今天
-_quote_cache = {"t": 0.0, "day": "", "v": None}
+_quote_cache = {"t": 0.0, "day": "", "v": None, "url": ""}
 _QUOTE_TTL = 1800.0          # 一言 30 分钟换一次（同一句不会一秒一变）
 
 _hist_cache = {"t": 0.0, "day": "", "v": None}
@@ -479,24 +751,62 @@ def _strip_tags(s):
     return _TAG_RE.sub("", s or "").replace("&nbsp;", " ").strip()
 
 
+def _quote_url(cfg):
+    """按 settings 拼一言地址。
+
+    hitokoto 的分类要写成重复参数 `?c=d&c=i&c=k`，不接受 `?c=d,i,k`（400），
+    所以这里把用户填的「逗号分隔」展开成重复参数。
+    """
+    url = (cfg.get("quote_api") or "").strip() or _defaults["quote_api"]
+    cats = (cfg.get("quote_cats") or "").strip()
+    if "{cats}" in url:
+        if cats:
+            # 兼容中文逗号、空格分隔
+            parts = [p for p in re.split(r"[,，\s]+", cats) if p]
+            join = "&c=" if "c={cats}" in url else ","
+            url = url.replace("{cats}", join.join(parts))
+        else:
+            # 用户没配分类：把 ?c={cats} / &c={cats} 整个参数去掉，别留个空 c=
+            url = re.sub(r"[?&]c=\{cats\}", "", url)
+            url = url.replace("{cats}", "")
+    return url
+
+
 def quote(force=False):
-    """一言（hitokoto.cn）。同一天内尽量稳定，取不到就用内置兜底句子。"""
+    """一言。默认 hitokoto.cn，可在设置里改地址与刷新间隔。
+
+    刷新间隔来自 settings.quote_refresh（分钟），0 表示一天只换一次。
+    换了地址/分类会立刻重新取，不用等缓存过期。
+    """
     now = time.time()
     today = time.strftime("%Y-%m-%d")
-    if (not force and _quote_cache["v"] and _quote_cache["day"] == today
-            and now - _quote_cache["t"] < _QUOTE_TTL):
+    cfg = settings()
+    url = _quote_url(cfg)
+    try:
+        ttl = max(0, int(cfg.get("quote_refresh", 30))) * 60.0
+    except Exception:
+        ttl = _QUOTE_TTL
+
+    hit = (not force and _quote_cache["v"] and _quote_cache["day"] == today
+           and (ttl <= 0 or now - _quote_cache["t"] < ttl))
+    if hit and _quote_cache.get("url") == url:
         return _quote_cache["v"]
 
     v = None
     try:
-        d = _http_json("https://v1.hitokoto.cn/?c=d&c=i&c=k", timeout=5)
-        text = (d.get("hitokoto") or "").strip()
+        d = _http_json(url, timeout=5)
+        # 不同源用的字段名不一样，挨个试
+        text = ""
+        for k in ("hitokoto", "text", "content", "sentence"):
+            text = (d.get(k) or "").strip() if isinstance(d, dict) else ""
+            if text:
+                break
         if text:
             v = {
                 "ok": True,
                 "text": text,
-                "from": (d.get("from") or "").strip(),
-                "who": (d.get("from_who") or "").strip(),
+                "from": ((d.get("from") or d.get("source") or "") or "").strip(),
+                "who": ((d.get("from_who") or d.get("author") or "") or "").strip(),
             }
     except Exception as e:
         log.debug("一言请求失败: %s", e)
@@ -508,7 +818,7 @@ def quote(force=False):
         else:
             v = {"ok": False, "text": "心之所向，素履以往。", "from": "", "who": ""}
 
-    _quote_cache.update(t=now, day=today, v=v)
+    _quote_cache.update(t=now, day=today, v=v, url=url)
     return v
 
 

@@ -22,7 +22,7 @@ from flask import Flask, Response, jsonify, send_from_directory
 # 允许 `python app.py` 直接跑
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from sensors import hardware, media  # noqa: E402
+from sensors import hardware, media, network  # noqa: E402
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 STATIC = os.path.join(ROOT, "static")
@@ -162,6 +162,10 @@ SETTING_KEYS = (
     # 外观 / 显示
     "screen", "font", "font_file",
     "bg_mode", "bg_image", "bg_effect", "bg_blur", "bg_opacity",
+    # 一言源与刷新
+    "quote_api", "quote_cats", "quote_refresh",
+    # 天气源
+    "weather_src",
 )
 
 
@@ -249,9 +253,33 @@ def api_settings_post():
                 cur[k] = body[k]
         _save_settings(cur)
         _api_cache["t"] = 0.0        # 立刻失效缓存
+        # 城市名 / 天气源 / 坐标改过之后，天气缓存和站点码缓存都要重来，
+        # 否则用户改完城市还得干等 10 分钟。
+        try:
+            network._settings_cache["t"] = 0.0
+            network._weather_cache.update(t=0.0, v=None)
+            network._cn_code_cache.update(t=0.0, city="", code="")
+        except Exception:
+            pass
         return jsonify({"ok": True})
     except Exception as e:
         log.exception("保存设置失败")
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+# ---------------- 一言：立即换一句 ----------------
+@app.route("/api/quote/refresh", methods=["POST"])
+def api_quote_refresh():
+    """强制重新取一句（设置里「立即换一句」用）。
+
+    顺带把 settings 缓存也打掉，这样刚刚保存的新接口地址/分类能立刻生效，
+    不用等 network.settings() 那 5 秒缓存过期。
+    """
+    try:
+        network._settings_cache["t"] = 0.0
+        return jsonify({"ok": True, "quote": network.quote(force=True)})
+    except Exception as e:
+        log.exception("刷新一言失败")
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
@@ -412,8 +440,21 @@ def api_launch():
         a = allowed[path]
         workdir = os.path.dirname(path) or None
         extra = (a.get("args") or "").strip()
-        cmd = [path] + (extra.split() if extra else [])
 
+        # 优先用 os.startfile（ShellExecuteEx）：最接近资源管理器里双击的效果，
+        # 能正确处理启动器类程序（哔哩哔哩、图吧工具箱这种）和需要提权的程序。
+        # 之前统一用 DETACHED_PROCESS + Popen 时，这类"二次 ShellExecute 子进程"的
+        # 启动器拿不到可用桌面会话，会静默退出，表现就是点了没反应。
+        if not extra:
+            try:
+                os.startfile(path)  # type: ignore[attr-defined]
+                log.info("启动应用(ShellExecute): %s (%s)", name or os.path.basename(path), path)
+                return jsonify({"ok": True})
+            except OSError as e:
+                log.warning("ShellExecute 失败，回退 Popen: %s", e)
+
+        # 兜底：需要带启动参数，或 startfile 不可用时走 Popen
+        cmd = [path] + (extra.split() if extra else [])
         creation = 0x00000008  # DETACHED_PROCESS
         subprocess.Popen(cmd, cwd=workdir, close_fds=True,
                          creationflags=creation,
@@ -490,6 +531,12 @@ def _ensure_settings():
         "screen": 0, "font": "system", "font_file": "",
         "bg_mode": "gradient", "bg_image": "",
         "bg_effect": "blur", "bg_blur": 18, "bg_opacity": 100,
+        # 一言（v1.1.1）：接口地址、hitokoto 分类、刷新间隔（分钟，0=每天一次）
+        "quote_api": "https://v1.hitokoto.cn/?c={cats}",
+        "quote_cats": "d,i,k",
+        "quote_refresh": 30,
+        # 天气源（v1.1.1）：auto / cn / open-meteo
+        "weather_src": "auto",
     }
     if not os.path.exists(SETTINGS):
         defaults["apps"] = _probe_apps()

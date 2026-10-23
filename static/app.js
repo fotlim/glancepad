@@ -602,6 +602,28 @@
         (wx.high != null && wx.low != null) ? `${wx.high}° / ${wx.low}°` : "--";
       $("wxHum").textContent = wx.humidity != null ? `湿度 ${wx.humidity}%` : "湿度 --";
       $("wxWind").textContent = wx.wind != null ? `风 ${wx.wind.toFixed(1)}m/s` : "风 --";
+      // AQI（有值才显示，颜色按等级）
+      const aq = $("wxAqi"), aqs = $("wxAqiSep");
+      if (aq && aqs) {
+        if (wx.aqi != null && wx.aqi !== "") {
+          const a = Number(wx.aqi);
+          aq.textContent = `AQI ${a}`;
+          aq.style.display = "";
+          aqs.style.display = "";
+          aq.style.color = a <= 50 ? "#57d98a" : a <= 100 ? "#ffbe5c"
+                        : a <= 150 ? "#ff9f5c" : "#e05c5c";
+        } else {
+          aq.style.display = "none";
+          aqs.style.display = "none";
+        }
+      }
+      // 气象预警（中国天气网会给，open-meteo 没有）
+      const al = $("wxAlarm");
+      if (al) {
+        const txt = (wx.alarm || "").trim();
+        if (txt) { al.textContent = "⚠ " + txt; al.style.display = ""; }
+        else { al.style.display = "none"; }
+      }
       const fc = $("fcList");
       const days = wx.days || [];
       if (fc) {
@@ -957,7 +979,8 @@
   // ---------------- 调试：把关键元素矩形打进 DOM（?debug=1，配 chrome --dump-dom 用） ----------------
   function dumpRects() {
     const ids = ["canvas", "head", "chart", "netChart", "netPeak", "muEq", "muLyric",
-                 "tempList", "diskList", "dock", "uptime", "muBody", "fcList", "wxCol"];
+                 "tempList", "diskList", "dock", "uptime", "muBody", "fcList", "wxCol",
+                 "clock", "quote", "quoteText", "quoteFrom", "date", "histList"];
     const out = {};
     ids.forEach((id) => {
       const el = $(id);

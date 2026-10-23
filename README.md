@@ -2,7 +2,7 @@
 
 > 一块闲置的竖屏，变成桌面上最顺眼的硬件仪表盘。
 
-![version](https://img.shields.io/badge/version-1.1.0-4fd1c5)
+![version](https://img.shields.io/badge/version-1.1.1-4fd1c5)
 ![platform](https://img.shields.io/badge/platform-Windows%2010%20%7C%2011-5b9dff)
 ![python](https://img.shields.io/badge/python-3.9%2B-9a7dff)
 ![license](https://img.shields.io/badge/license-MIT-57d98a)
@@ -157,10 +157,23 @@ kiosk 全屏没有关闭按钮，这是故意的（避免误触）。退出方�
 > `icon` 只写文件名时会去 `static/icons/` 找；也可以填 `/static/icons/xxx.png` 或完整的 http(s) 地址。
 > 路径没在 `settings.json` 里登记的程序**无法被 Dock 启动**（`/api/launch` 会返回 403），这是刻意的安全限制。
 
-### 改天气城市
+### 改天气城市与天气源
 
-同一设置窗口的「天气与位置」页，填城市名 + 经纬度即可（城市名只是显示用，天气按经纬度查）。
-天气数据来自 [open-meteo.com](https://open-meteo.com/)，**免费、无需 API key**。
+同一设置窗口的「天气与位置」页，填**城市名**即可（比如「长春市」「杭州市」）—— 名字会拿去查中国天气网的站点码，
+也直接显示在天气卡上；下面的经纬度只在回退 open-meteo 时用到，留默认值也没关系（会自动按城市名校正）。
+
+页面上还有「**天气源**」下拉，三档：
+
+| 选项 | 说明 |
+| --- | --- |
+| **自动**（默认） | 先查中国天气网（中国气象局站点），取不到才回退 open-meteo |
+| **中国天气网** | 只用中国气象局数据，站点更贴近本地实况，还带 AQI 与**气象预警** |
+| **open-meteo** | 只用国际通用的 open-meteo（网格插值，国内精度略粗） |
+
+> 为什么默认换成中国天气网：open-meteo 在国内是网格插值，和气象局观测站有偏差，体感常常「不准」。
+> 中国天气网是气象局官方数据，还会给 AQI 和预警（面板上显示成黄色的 ⚠ 行）。两者都免费、都不用 API key。
+
+> 改完城市如果读数还是不对，保存设置后重启一次监控 —— 后端会按城市名自动校正经纬度。
 
 ### 换字体
 

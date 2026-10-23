@@ -3,6 +3,32 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.1.1] - 2026-10-23
+
+天气数据源换成气象局官方站点，顺带把顶部的时间/日期/一言排版重新收了收。
+
+### 新增
+
+- **天气源切换**：设置窗口「天气与位置」页新增「天气源」下拉，三档 —— **自动**（默认，先中国天气网、失败回退 open-meteo）、**中国天气网**（中国气象局站点）、**open-meteo**（国际通用）。写入 `settings.json` 的 `weather_src` 字段。
+- **中国天气网主源**：新增 `_cn_weather()`，用城市名查站点码 → `d1.weather.com.cn/sk_2d`（实时温湿度/风向/AQI）→ `www.weather.com.cn/weather/<code>.shtml`（七天预报）→ `d1.weather.com.cn/dingzhi`（气象预警）。带 `Referer` 请求头（缺了会被 403）。
+- **AQI 展示**：天气卡湿度/风速后方显示 AQI，按等级着色（≤50 绿 / ≤100 黄 / ≤150 橙 / 更高红）。
+- **气象预警展示**：有预警时在天气卡下方显示一行黄色 `⚠ 预警内容`，单行省略。
+- **坐标自动校正**：回退 open-meteo 时用城市名反查经纬度，与 `settings.json` 里的坐标偏差超过 1.5° 就自动按城市名校正并写日志。
+- **自定义一言源**：设置窗口新增「一言」页签 —— 接口地址（支持任意返回 JSON 的一言 API，字段名兼容 `hitokoto/text/content/sentence`）、hitokoto 分类（`d/i/k/a/b`）、刷新间隔（0~1440 分钟，0 = 每天只换一次）、「立即换一句」按钮。`settings.json` 新增 `quote_api` / `quote_cats` / `quote_refresh` 三键。
+- **新路由**：`POST /api/quote/refresh`（立即换一句，并清 settings 缓存让新地址立刻生效）。
+
+### 变更
+
+- **settings.json 默认坐标修正**：原来是杭州的 `30.2741/120.1551`，改成按城市名（长春）对应的 `43.88/125.3228`。
+- **顶部排版收紧**：`head` 行的 `grid-template-rows` 从 `fr` 改为 **`auto`**，让顶部高度由内容决定，消掉时钟与卡片之间 67px 的空白；`.clock` 放大到 `clamp(44px,6.2vh,62px)`，日期从 15.5px 放大到 **32px** 并加粗，历史列表从 10.5px/1.34 放宽到 **13px/1.62**，`.head-right` 宽度从 48% 放宽到 56%。
+- `settings.json` 新增 `weather_src` 键；改城市/天气源后自动清掉 settings、weather、站点码三个缓存，不用等 10 分钟。
+
+### 修复
+
+- **气象预警永远为空**：`dingzhi` 文件末尾没有分号，原正则 `alarmDZ\d*\s*=\s*(\{.*?\});` 强制要求分号导致匹配失败。改成 `(\{.*\})` 贪婪匹配。
+- **天气读数不准**：`city="长春市"` 配的却是杭州坐标，面板一直在报杭州天气。已修坐标并加坐标自动校正。
+- **`.wx-alarm` 缺样式**：新增预警行会挤乱天气列，补了 `font-size:10.5px / 橙色 / 单行省略`。
+
 ## [1.1.0] - 2026-10-23
 
 外观与信息密度的一次大改版。
@@ -115,6 +141,7 @@
 - AIDA64 通道需要手动在「设置 → 外部应用程序」里勾选「允许共享内存」或「允许将监测数据写入注册表」；AIDA64 的界面是 Delphi 自绘，无法可靠自动化，故本版本不做自动开启。
 - 歌词中文匹配依赖 lrclib / 网易云曲库，冷门歌曲可能搜不到。
 
+[1.1.1]: https://github.com/fotlim/glancepad/releases/tag/v1.1.1
 [1.1.0]: https://github.com/fotlim/glancepad/releases/tag/v1.1.0
 [1.0.3]: https://github.com/fotlim/glancepad/releases/tag/v1.0.3
 [1.0.2]: https://github.com/fotlim/glancepad/releases/tag/v1.0.2

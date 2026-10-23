@@ -46,7 +46,21 @@ DEFAULT = {
     "bg_effect": "blur",     # blur / dim / none
     "bg_blur": 18,
     "bg_opacity": 100,
+    # ---- 天气源（v1.1.1）
+    "weather_src": "auto",   # auto / cn / open-meteo
 }
+
+# 天气源下拉的「显示文字 -> 实际值」对照（界面友好，存的是英文值）
+_WSRC_LABEL = {
+    "auto": "自动（中国天气网 → open-meteo）",
+    "cn": "中国天气网（中国气象局）",
+    "open-meteo": "open-meteo（国际通用）",
+}
+_WSRC_VALUE = {v: k for k, v in _WSRC_LABEL.items()}
+
+
+def _wsrc_from_label(label):
+    return _WSRC_VALUE.get(str(label or "").strip(), "auto")
 
 
 # ---------------------------------------------------------------- 基础工具
@@ -476,21 +490,94 @@ class SettingsWindow:
         self.v_lat = tk.StringVar(value=str(d.get("latitude", 30.2741)))
         self.v_lon = tk.StringVar(value=str(d.get("longitude", 120.1551)))
         self.v_wx = tk.BooleanVar(value=bool(d.get("weather", True)))
+        _wsrc = str(d.get("weather_src", "auto") or "auto").lower()
+        self.v_wsrc = tk.StringVar(value=_WSRC_LABEL.get(_wsrc, _WSRC_LABEL["auto"]))
 
-        field(t2, 0, "城市名", self.v_city, "顶部右上角天气卡显示的名字")
-        field(t2, 1, "纬度", self.v_lat, "影响天气数据，如 30.2741")
-        field(t2, 2, "经度", self.v_lon, "如 120.1551")
+        field(t2, 0, "城市名", self.v_city, "用来查中国天气网的站点码，也显示在天气卡上")
+
+        tk.Label(t2, text="天气源", bg="#1b242b", fg="#9fb3c8", width=10,
+                 anchor="e").grid(row=1, column=0, padx=(16, 8), pady=8, sticky="e")
+        self.cb_wsrc = ttk.Combobox(t2, textvariable=self.v_wsrc, width=24,
+                                    state="readonly",
+                                    values=list(_WSRC_LABEL.values()))
+        self.cb_wsrc.grid(row=1, column=1, pady=8, sticky="w")
+        tk.Label(t2, text="推荐「自动」：中国气象局数据，取不到再回退 open-meteo",
+                 bg="#1b242b", fg="#6d8296", anchor="w").grid(
+            row=1, column=2, padx=(10, 0), sticky="w")
+
+        field(t2, 2, "纬度", self.v_lat, "只在 open-meteo 或回头校正时用到")
+        field(t2, 3, "经度", self.v_lon, "如 125.3228（长春）")
         tk.Checkbutton(t2, text="在顶部显示天气", variable=self.v_wx,
                        bg="#1b242b", fg="#cfe0ee", selectcolor="#131a20",
                        activebackground="#1b242b", activeforeground="#4fd1c5",
-                       relief="flat", anchor="w").grid(row=3, column=1,
+                       relief="flat", anchor="w").grid(row=4, column=1,
                                                        pady=(4, 8), sticky="w")
-        tk.Label(t2, text="天气来自 open-meteo.com，免费无需 key；取不到时自动显示「—」",
+        tk.Label(t2, text="「自动 / 中国天气网」用的是中国气象局站点，比 open-meteo 的网格插值准",
                  bg="#1b242b", fg="#6d8296", anchor="w").grid(
-            row=4, column=0, columnspan=3, padx=16, pady=(6, 0), sticky="w")
-        tk.Label(t2, text="城市名不会自动反查经纬度，想换城市请一起改经纬度",
+            row=5, column=0, columnspan=3, padx=16, pady=(6, 0), sticky="w")
+        tk.Label(t2, text="改城市名后如果读数还是不对，可点「保存设置」重启监控，会自动校正坐标",
                  bg="#1b242b", fg="#6d8296", anchor="w").grid(
-            row=5, column=0, columnspan=3, padx=16, pady=(2, 0), sticky="w")
+            row=6, column=0, columnspan=3, padx=16, pady=(2, 0), sticky="w")
+
+        # ---------------- Tab2b: 一言
+        tq = tk.Frame(nb, bg="#1b242b")
+        nb.add(tq, text="  一言  ")
+
+        self.v_qapi = tk.StringVar(
+            value=str(d.get("quote_api", "https://v1.hitokoto.cn/?c={cats}")))
+        self.v_qcats = tk.StringVar(value=str(d.get("quote_cats", "d,i,k")))
+        self.v_qref = tk.StringVar(value=str(d.get("quote_refresh", 30)))
+
+        tk.Label(tq, text="接口地址", bg="#1b242b", fg="#9fb3c8",
+                 anchor="e", width=10).grid(row=0, column=0, padx=(16, 8),
+                                            pady=(18, 8), sticky="e")
+        tk.Entry(tq, textvariable=self.v_qapi, width=54, bg="#131a20",
+                 fg="#e6eef5", insertbackground="#4fd1c5", relief="flat",
+                 highlightthickness=1, highlightbackground="#2c3a45",
+                 highlightcolor="#4fd1c5").grid(row=0, column=1, pady=(18, 8),
+                                                sticky="w", ipady=4)
+        tk.Label(tq, text="要返回 JSON；字段名支持 hitokoto / text / content / sentence",
+                 bg="#1b242b", fg="#6d8296", anchor="w").grid(
+            row=1, column=1, padx=(0, 0), pady=(0, 4), sticky="w")
+
+        tk.Label(tq, text="分类", bg="#1b242b", fg="#9fb3c8",
+                 anchor="e", width=10).grid(row=2, column=0, padx=(16, 8),
+                                            pady=8, sticky="e")
+        tk.Entry(tq, textvariable=self.v_qcats, width=26, bg="#131a20",
+                 fg="#e6eef5", insertbackground="#4fd1c5", relief="flat",
+                 highlightthickness=1, highlightbackground="#2c3a45",
+                 highlightcolor="#4fd1c5").grid(row=2, column=1, pady=8,
+                                                sticky="w", ipady=4)
+        tk.Label(tq, text="仅对 hitokoto 生效：d 文学 / i 诗词 / k 哲学 / a 动画 / b 漫画",
+                 bg="#1b242b", fg="#6d8296", anchor="w").grid(
+            row=2, column=2, padx=(10, 16), sticky="w")
+
+        tk.Label(tq, text="刷新间隔", bg="#1b242b", fg="#9fb3c8",
+                 anchor="e", width=10).grid(row=3, column=0, padx=(16, 8),
+                                            pady=8, sticky="e")
+        frq = tk.Frame(tq, bg="#1b242b")
+        frq.grid(row=3, column=1, pady=8, sticky="w")
+        self.sp_qref = tk.Spinbox(frq, from_=0, to=1440, increment=5, width=6,
+                                  textvariable=self.v_qref, bg="#131a20",
+                                  fg="#e6eef5", insertbackground="#4fd1c5",
+                                  relief="flat", buttonbackground="#26333d",
+                                  highlightthickness=1,
+                                  highlightbackground="#2c3a45")
+        self.sp_qref.pack(side="left", ipady=3)
+        tk.Label(frq, text=" 分钟换一句（0 = 每天只换一次）", bg="#1b242b",
+                 fg="#6d8296").pack(side="left")
+
+        tk.Button(tq, text="立即换一句", command=self.refresh_quote_click,
+                  bg="#26333d", fg="#cfe0ee", relief="flat", padx=14,
+                  pady=4).grid(row=4, column=1, pady=(14, 4), sticky="w")
+        self.lb_quote = tk.Label(tq, text="", bg="#1b242b", fg="#6d8296",
+                                 anchor="w", justify="left", wraplength=560)
+        self.lb_quote.grid(row=5, column=0, columnspan=3, padx=16,
+                           pady=(6, 0), sticky="w")
+        tk.Label(tq, text="改完点右下角「保存设置」，面板约 20 秒内自动换新；"
+                          "接口取不到时沿用上一句，不会变成空白。",
+                 bg="#1b242b", fg="#6d8296", anchor="w").grid(
+            row=6, column=0, columnspan=3, padx=16, pady=(10, 0), sticky="w")
 
         # ---------------- Tab3: 系统（开机自启 / 快捷方式）
         t3 = tk.Frame(nb, bg="#1b242b")
@@ -796,6 +883,50 @@ class SettingsWindow:
         else:
             self.lb_lnk.config(text="失败：" + str(msg), fg="#e05c5c")
 
+    # ---- 一言
+    def _qref_value(self):
+        """刷新间隔读成 int；乱填就按 30 分钟算，别让保存直接失败。"""
+        try:
+            return max(0, int(float(self.v_qref.get())))
+        except Exception:
+            return 30
+
+    def refresh_quote_click(self):
+        """立即换一句：先把当前填的地址/分类存进去，再请求后端强制刷新。"""
+        self.lb_quote.config(text="正在取…", fg="#ffbe5c")
+
+        def work():
+            msg, color = "", "#6d8296"
+            try:
+                d = load_settings()
+                d["quote_api"] = (self.v_qapi.get().strip()
+                                  or "https://v1.hitokoto.cn/?c={cats}")
+                d["quote_cats"] = self.v_qcats.get().strip()
+                d["quote_refresh"] = self._qref_value()
+                save_settings(d)
+            except Exception as e:
+                logerr("保存一言设置失败: %r" % (e,))
+            try:
+                req = urllib.request.Request(URL + "api/quote/refresh",
+                                             data=b"{}", method="POST",
+                                             headers={"Content-Type": "application/json"})
+                with urllib.request.urlopen(req, timeout=8) as r:
+                    j = json.loads(r.read().decode("utf-8"))
+                q = j.get("quote") or {}
+                if q.get("text"):
+                    who = q.get("who") or q.get("from") or ""
+                    msg = "取到了：" + q["text"] + ("　—— " + who if who else "")
+                    color = "#57d98a"
+                else:
+                    msg = "接口没返回内容，检查地址是不是返回 JSON"
+                    color = "#ffbe5c"
+            except Exception as e:
+                msg = "请求失败：%s（监控没启动时会这样）" % (e,)
+                color = "#e05c5c"
+            self.root.after(0, lambda: self.lb_quote.config(text=msg, fg=color))
+
+        threading.Thread(target=work, daemon=True).start()
+
     # ---- 保存
     def save(self):
         from tkinter import messagebox
@@ -816,7 +947,11 @@ class SettingsWindow:
                  bg_image=self.v_bg_image.get() or "",
                  bg_effect=self.v_bg_effect.get() or "blur",
                  bg_blur=int(self.v_bg_blur.get()),
-                 bg_opacity=int(self.v_bg_op.get()))
+                 bg_opacity=int(self.v_bg_op.get()),
+                 quote_api=self.v_qapi.get().strip() or "https://v1.hitokoto.cn/?c={cats}",
+                 quote_cats=self.v_qcats.get().strip(),
+                 quote_refresh=self._qref_value(),
+                 weather_src=_wsrc_from_label(self.v_wsrc.get()))
         try:
             save_settings(d)
         except Exception as e:
