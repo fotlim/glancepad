@@ -540,22 +540,34 @@ body.landscape .hist-list li:nth-child(n+5){display:none;}
   gap:3px;
   align-content:space-between;
 }
+/* 两列 grid：标签列固定宽、数值列统一右对齐。
+   之前用 flex + 各标签自然宽度，标签长短不一时数值左边缘参差不齐，
+   看起来像「值跑到了别人标签后面」。 */
 .kv-list li{
-  display:flex;align-items:baseline;gap:8px;
+  display:grid;
+  grid-template-columns:5.8em minmax(0,1fr);
+  align-items:baseline;
+  column-gap:10px;
   font-size:12.5px;
   padding:1px 0;
   min-width:0;
 }
 .kv-list .k{
-  color:var(--text-mute);flex:0 0 auto;
+  color:var(--text-mute);
   font-size:11.5px;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
 }
 .kv-list .v{
-  margin-left:auto;
   color:var(--text);font-variant-numeric:tabular-nums;
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
-  text-align:right;min-width:0;
+  /* 数值也左对齐：标签列固定宽之后，每行从同一个竖线开始读，
+     右对齐会让短值（如 WLAN）飘到最右边，看着像配错了标签。 */
+  text-align:left;min-width:0;
 }
+/* 信号强度那行数值里带柱状图，跟随左对齐 */
+.kv-list li.sig-li .v{display:flex;justify-content:flex-start;align-items:center;gap:6px;}
 .kv-list .v.small{font-size:11px;color:var(--text-dim);}
 
 /* 今日天气 */
