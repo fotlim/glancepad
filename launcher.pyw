@@ -745,8 +745,21 @@ class SettingsWindow:
             text="%d%%" % self.v_bg_op.get()))
         self.lb_op.config(text="%d%%" % self.v_bg_op.get())
 
+        b6 = tk.Frame(t4, bg="#1b242b")
+        b6.pack(fill="x", padx=16, pady=(4, 0))
+        self.v_bg_contrast = tk.StringVar(
+            value=str(d.get("bg_contrast", "auto") or "auto"))
+        cb_auto = tk.Checkbutton(
+            b6, text="根据背景亮度自动增强文字对比度",
+            variable=self.v_bg_contrast, onvalue="auto", offvalue="off",
+            bg="#1b242b", fg="#cfe0ee", selectcolor="#131a20",
+            activebackground="#1b242b", activeforeground="#4fd1c5",
+            relief="flat")
+        cb_auto.pack(side="left")
+
         hint(t4, "模糊半径只在「处理方式 = 模糊」时起作用；不透明度越低，背景图越淡。\n"
-                 "图片复制到程序目录 backgrounds/ 下，原图不会被修改。")
+                 "图片复制到程序目录 backgrounds/ 下，原图不会被修改。\n"
+                 "自动对比度会按背景图的亮度分析结果自动加深遮罩、压暗卡片、提亮次要文字，照片类背景建议保持开启。")
 
         # ---------------- 底部按钮
         foot = tk.Frame(w, bg="#131a20")
@@ -948,6 +961,7 @@ class SettingsWindow:
                  bg_effect=self.v_bg_effect.get() or "blur",
                  bg_blur=int(self.v_bg_blur.get()),
                  bg_opacity=int(self.v_bg_op.get()),
+                 bg_contrast=self.v_bg_contrast.get() or "auto",
                  quote_api=self.v_qapi.get().strip() or "https://v1.hitokoto.cn/?c={cats}",
                  quote_cats=self.v_qcats.get().strip(),
                  quote_refresh=self._qref_value(),

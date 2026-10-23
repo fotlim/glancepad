@@ -161,7 +161,7 @@ SETTING_KEYS = (
     "city", "latitude", "longitude", "weather", "apps",
     # 外观 / 显示
     "screen", "font", "font_file",
-    "bg_mode", "bg_image", "bg_effect", "bg_blur", "bg_opacity",
+    "bg_mode", "bg_image", "bg_effect", "bg_blur", "bg_opacity", "bg_contrast",
     # 一言源与刷新
     "quote_api", "quote_cats", "quote_refresh",
     # 天气源
@@ -292,6 +292,9 @@ BGS = os.path.join(ROOT, "backgrounds")
 def api_theme():
     """外观相关设置（前端拿去切 body class、设背景图 src）。"""
     d = _load_settings()
+    bg_mode = (d.get("bg_mode") or "gradient").lower()
+    img = _safe_name(d.get("bg_image"))
+    stats = _bg_stats(img) if bg_mode == "image" else None
     return jsonify({
         "ok": True,
         "font": d.get("font") or "system",
@@ -301,6 +304,8 @@ def api_theme():
         "bg_effect": d.get("bg_effect") or "blur",
         "bg_blur": int(d.get("bg_blur") or 18),
         "bg_opacity": int(d.get("bg_opacity") or 100),
+        "bg_contrast": d.get("bg_contrast") or "auto",
+        "bg_stats": stats,
     })
 
 
@@ -308,6 +313,52 @@ def _safe_name(s):
     """只允许纯文件名，挡住 ../ 之类的路径穿越。"""
     s = os.path.basename(str(s or "").replace("\\", "/"))
     return s if s and s not in (".", "..") else ""
+
+
+# ---------- 背景图亮度分析（自动对比度） ----------
+# 换成自定义背景图后，浅色照片会让卡片里的浅灰字看不清。
+# 这里把图缩到 32x32 估算上/中/下三段亮度，再据此自动加遮罩、加深玻璃、提亮次要文字色。
+_bg_stats_cache = {"key": None, "v": None}
+
+
+def _bg_stats(name):
+    """返回 {lum, top, mid, bot, std}（0~1 相对亮度），失败返回 None。"""
+    if not name:
+        return None
+    path = os.path.join(BGS, name)
+    try:
+        st = os.stat(path)
+    except OSError:
+        return None
+    key = (name, int(st.st_mtime), st.st_size)
+    if _bg_stats_cache.get("key") == key:
+        return _bg_stats_cache.get("v")
+    try:
+        from PIL import Image
+        with Image.open(path) as im:
+            im = im.convert("RGB").resize((32, 32))
+            px = list(im.getdata())
+    except Exception as e:
+        log.warning("背景图亮度分析失败: %s", e)
+        return None
+    if not px:
+        return None
+
+    def _lum(c):
+        r, g, b = (x / 255.0 for x in c)
+        return 0.2126 * r + 0.7152 * g + 0.0722 * b
+
+    ls = [_lum(c) for c in px]
+    n = len(ls)
+    mean = sum(ls) / n
+    third = max(1, n // 3)
+    top = sum(ls[:third]) / third
+    mid = sum(ls[third:2 * third]) / max(1, third)
+    bot = sum(ls[2 * third:]) / max(1, n - 2 * third)
+    std = (sum((x - mean) ** 2 for x in ls) / n) ** 0.5
+    v = {"lum": mean, "top": top, "mid": mid, "bot": bot, "std": std}
+    _bg_stats_cache.update(key=key, v=v)
+    return v
 
 
 @app.route("/api/theme.css")
@@ -531,6 +582,8 @@ def _ensure_settings():
         "screen": 0, "font": "system", "font_file": "",
         "bg_mode": "gradient", "bg_image": "",
         "bg_effect": "blur", "bg_blur": 18, "bg_opacity": 100,
+        # 背景图自动对比度（v1.1.2）：auto / off
+        "bg_contrast": "auto",
         # 一言（v1.1.1）：接口地址、hitokoto 分类、刷新间隔（分钟，0=每天一次）
         "quote_api": "https://v1.hitokoto.cn/?c={cats}",
         "quote_cats": "d,i,k",

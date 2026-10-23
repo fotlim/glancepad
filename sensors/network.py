@@ -82,6 +82,9 @@ _defaults = {
     # auto = 优先中国天气网（中国气象局站点），失败自动回退 open-meteo
     # cn   = 只用中国天气网；open-meteo = 只用 open-meteo
     "weather_src": "auto",
+    # ---- v1.1.2 新增：背景图自动对比度 ----
+    # auto = 按背景图亮度自动加遮罩/加深玻璃/提亮次要文字；off = 固定用默认值
+    "bg_contrast": "auto",
 }
 
 _settings_cache = {"t": 0.0, "v": None}

@@ -75,6 +75,55 @@
   // 这里只需要按 bg_mode / bg_effect 切 body class，并给背景图设 src。
   const BG_CLASSES = ["bg-image", "bg-dim", "bg-none"];
   let lastThemeKey = "";
+
+  // ---- 背景图自动对比度 ----
+  // 服务端 /api/theme 会返回 bg_contrast（auto/off）与 bg_stats：
+  //   {lum, top, mid, bot, std}，都是 0~1 的相对亮度（top/mid/bot 是画面三等分的均值）。
+  // 背景越亮，浅色文字越糊，所以按亮度自动：加深遮罩、把卡片压暗、把次要文字提亮。
+  function applyContrast(t) {
+    const root = document.documentElement.style;
+    const reset = () => {
+      root.removeProperty("--vp-top");
+      root.removeProperty("--vp-mid");
+      root.removeProperty("--vp-bot");
+      root.removeProperty("--card-shade");
+      root.removeProperty("--text-dim");
+      root.removeProperty("--text-mute");
+    };
+    const st = t && t.bg_stats;
+    const on = (t && t.bg_contrast !== "off") && t.bg_mode === "image" && st;
+    if (!on) { reset(); return; }
+
+    const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+    // 三等分亮度 → 对应遮罩不透明度（越亮遮得越狠）
+    const veil = (l) => +clamp(0.10 + l * 0.62, 0.10, 0.74).toFixed(3);
+    root.setProperty("--vp-top", String(veil(st.top)));
+    root.setProperty("--vp-mid", String(veil(st.mid)));
+    root.setProperty("--vp-bot", String(veil(st.bot)));
+
+    // 卡片附加暗度：背景整体偏亮时压暗卡片，让文字和玻璃底拉开
+    const shade = clamp((st.lum - 0.30) * 0.62, 0, 0.42);
+    root.setProperty("--card-shade", shade.toFixed(3));
+
+    // 次要文字提亮：亮度高时 --text-dim/--text-mute 会贴在亮背景上，按需往白推
+    const lift = clamp((st.lum - 0.34) * 1.15, 0, 1);
+    if (lift > 0.01) {
+      const mix = (from, to) => {
+        const f = parseInt(from.slice(1), 16), g = parseInt(to.slice(1), 16);
+        const ch = (sh) => {
+          const a = (f >> sh) & 255, b = (g >> sh) & 255;
+          return Math.round(a + (b - a) * lift).toString(16).padStart(2, "0");
+        };
+        return "#" + ch(16) + ch(8) + ch(0);
+      };
+      root.setProperty("--text-dim", mix("#9fb0c0", "#e2ecf5"));
+      root.setProperty("--text-mute", mix("#6f8191", "#c2d2e0"));
+    } else {
+      root.removeProperty("--text-dim");
+      root.removeProperty("--text-mute");
+    }
+  }
+
   async function applyTheme() {
     let t = null;
     try {
@@ -84,10 +133,13 @@
     if (!t || !t.ok) return;
 
     // 没变就别折腾画布（轮询 20 秒一次，避免无谓重绘）
+    const statsKey = t.bg_stats ? [t.bg_stats.lum, t.bg_stats.top, t.bg_stats.mid, t.bg_stats.bot].join(",") : "";
     const key = [t.bg_mode, t.bg_image, t.bg_effect, t.bg_blur, t.bg_opacity,
-                 t.font, t.font_file].join("|");
+                 t.font, t.font_file, t.bg_contrast, statsKey].join("|");
     if (key === lastThemeKey) return;
     lastThemeKey = key;
+
+    applyContrast(t);
 
     BG_CLASSES.forEach((c) => document.body.classList.remove(c));
     const img = $("bgImg");

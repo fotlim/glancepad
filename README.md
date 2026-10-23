@@ -2,7 +2,7 @@
 
 > 一块闲置的竖屏，变成桌面上最顺眼的硬件仪表盘。
 
-![version](https://img.shields.io/badge/version-1.1.1-4fd1c5)
+![version](https://img.shields.io/badge/version-1.1.2-4fd1c5)
 ![platform](https://img.shields.io/badge/platform-Windows%2010%20%7C%2011-5b9dff)
 ![python](https://img.shields.io/badge/python-3.9%2B-9a7dff)
 ![license](https://img.shields.io/badge/license-MIT-57d98a)
@@ -190,7 +190,7 @@ kiosk 全屏没有关闭按钮，这是故意的（避免误触）。退出方�
 设置窗口 →「**显示**」→「背景」：
 
 - **默认渐变**：内置的暗色径向渐变
-- **自定义图片**：点「导入图片…」选 .jpg / .png / .webp / .bmp，复制到程序目录的 ackgrounds/
+- **自定义图片**：点「导入图片…」选 .jpg / .png / .webp / .bmp，复制到程序目录的 `backgrounds/`
 
 三种处理方式：
 
@@ -201,6 +201,16 @@ kiosk 全屏没有关闭按钮，这是故意的（避免误触）。退出方�
 | **原图** | 直接用原图，不加任何滤镜 |
 
 「不透明度」滑块控制背景图本身的不透明度（10%~100%），卡片始终是半透明毛玻璃，不影响可读性。
+
+#### 自动对比度
+
+照片类背景常常一半亮一半暗，白字压在亮处就看不清了。打开「**根据背景亮度自动增强文字对比度**」（默认开）后：
+
+- 后端把图片缩成 32×32，算整体亮度和上/中/下三段的亮度；
+- 前端据此自动加深顶部与底部的暗角遮罩（越亮压得越狠）、按整体亮度压暗卡片玻璃层、把次要文字色往亮处提；
+- 越亮的图补偿越明显，深色照片几乎不动。
+
+关闭后一切回到固定配色。这个开关写入 `settings.json` 的 `bg_contrast`（`auto` / `off`）。
 
 ---
 

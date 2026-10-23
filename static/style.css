@@ -5,6 +5,7 @@
 
 :root{
   --bg-deep:#0e1418;
+  /* 背景图自动对比度：--vp-* 与 --glass-* / --tx-* 由 app.js 的 applyTheme() 按背景亮度覆盖 */
   --glass:rgba(38,50,60,0.42);
   --glass-hi:rgba(78,96,112,0.30);
   --stroke:rgba(180,205,225,0.16);
@@ -12,6 +13,10 @@
   --text:#e8eef4;
   --text-dim:#9fb0c0;
   --text-mute:#6f8191;
+  --vp-top:0.30;   /* 遮罩上段不透明度 */
+  --vp-mid:0.10;   /* 中段 */
+  --vp-bot:0.42;   /* 下段 */
+  --card-shade:0;  /* 卡片附加暗度 0~1 */
   --cyan:#4fd1c5;
   --cyan-soft:rgba(79,209,197,0.16);
   --blue:#5b9dff;
@@ -71,7 +76,11 @@ body.bg-dim .bg{filter:saturate(105%) brightness(.75);}
 body.bg-none .bg{filter:none;}
 .bg-veil{
   position:fixed;inset:0;
-  background:linear-gradient(180deg,rgba(8,12,16,0.30) 0%,rgba(8,12,16,0.10) 40%,rgba(8,12,16,0.42) 100%);
+  /* 三段不透明度由 app.js 按背景图亮度动态设置（见 :root 里的 --vp-* 注释） */
+  background:linear-gradient(180deg,
+    rgba(8,12,16,var(--vp-top)) 0%,
+    rgba(8,12,16,var(--vp-mid)) 40%,
+    rgba(8,12,16,var(--vp-bot)) 100%);
   z-index:1;
   pointer-events:none;
 }
@@ -135,7 +144,9 @@ body.landscape .canvas{
 
 /* ---------------- 通用卡片 ---------------- */
 .card{
-  background:linear-gradient(150deg,var(--glass-hi),var(--glass));
+  /* 第二层是「附加暗度」：背景图模式下由 app.js 按亮度抬高 --card-shade，把卡片压暗提对比 */
+  background:linear-gradient(150deg,var(--glass-hi),var(--glass)),
+             rgba(6,10,14,var(--card-shade));
   border:1px solid var(--stroke);
   border-radius:var(--radius);
   box-shadow:var(--shadow);
@@ -198,10 +209,12 @@ body.landscape .canvas{
   min-width:0;flex:1;
 }
 .clock{
-  /* 顶部主视觉：竖屏设计稿 78px，小视口自动缩回 */
-  font-size:clamp(52px,8.6vh,78px);
+  /* 顶部主视觉：竖屏设计稿 130px，小视口自动缩回。
+     右侧「日期 + 历史列表」会把 head 行撑到约 190px 高，时钟必须够大才填得满，
+     否则时钟上方会留出一大块没用的空白（quote 仍然贴底，紧邻 CPU 卡）。 */
+  font-size:clamp(64px,14.2vh,130px);
   font-weight:700;
-  letter-spacing:1.5px;
+  letter-spacing:0;
   line-height:1;
   font-variant-numeric:tabular-nums;
   text-shadow:0 2px 28px rgba(120,200,255,0.26);
@@ -213,15 +226,16 @@ body.landscape .canvas{
 /* 时间下面的一言 */
 .quote{
   display:flex;align-items:baseline;gap:8px;
-  font-size:13.5px;line-height:1.4;
+  font-size:17px;line-height:1.45;
   max-width:100%;min-width:0;
 }
 .quote .q-text{
-  color:var(--text-dim);
+  color:var(--text);
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  text-shadow:0 1px 10px rgba(0,0,0,0.55);
 }
 .quote .q-from{
-  color:var(--text-mute);font-size:12px;
+  color:var(--text-dim);font-size:13.5px;
   flex:0 0 auto;max-width:38%;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
 }
@@ -242,7 +256,7 @@ body.landscape .canvas{
 .hist-list{
   list-style:none;
   display:flex;flex-direction:column;gap:4px;
-  font-size:13px;line-height:1.62;
+  font-size:14px;line-height:1.6;
   width:100%;min-width:0;
   max-height:100%;overflow:hidden;
   /* 外层 .head-right 是 text-align:right，会把年份和标题拉开成两列、看着不相干；
@@ -251,12 +265,13 @@ body.landscape .canvas{
 }
 .hist-list li{
   display:flex;gap:5px;align-items:baseline;
-  color:var(--text-mute);
+  color:var(--text-dim);
   min-width:0;
+  text-shadow:0 1px 8px rgba(0,0,0,0.5);
 }
 .hist-list li .y{
   flex:0 0 auto;color:var(--cyan);font-variant-numeric:tabular-nums;
-  font-size:11px;opacity:.9;
+  font-size:12px;opacity:1;
 }
 .hist-list li .t{
   flex:1;min-width:0;
@@ -926,7 +941,8 @@ body.landscape .hist-list li:nth-child(n+5){display:none;}
   display:flex;align-items:center;justify-content:center;
   gap:9px;
   height:100%;min-height:0;
-  background:linear-gradient(150deg,var(--glass-hi),var(--glass));
+  background:linear-gradient(150deg,var(--glass-hi),var(--glass)),
+             rgba(6,10,14,var(--card-shade));
   border:1px solid var(--stroke);
   border-radius:16px;
   box-shadow:var(--shadow);
