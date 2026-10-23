@@ -143,6 +143,7 @@
               <span class="net-dot up"></span><b id="netUp">0.0</b><i>Mbps</i>
             </span>
           </div>
+          <div class="wifi-body">
           <ul class="kv-list" id="wifiList">
             <li><span class="k">适配器名称</span><span class="v" id="wifiAdapter">--</span></li>
             <li><span class="k">SSID</span><span class="v" id="wifiSsid">--</span></li>
@@ -159,7 +160,8 @@
               </span>
             </li>
           </ul>
-          <!-- 下载速度折线图 -->
+          <!-- 下载速度折线图：与 WiFi 信息左右并排（不再压在列表下面，
+               避免竖屏下收发速率/信号强度与折线互相挤） -->
           <div class="net-chart-wrap">
             <div class="net-chart-head">
               <span>下载速度</span>
@@ -167,6 +169,7 @@
             </div>
             <canvas id="netChart"></canvas>
           </div>
+          </div><!-- /.wifi-body -->
         </div>
 
         <!-- 右：今日天气 + 七天预报 -->

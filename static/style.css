@@ -531,9 +531,20 @@ body.landscape .hist-list li:nth-child(n+5){display:none;}
   padding-left:14px;
 }
 
+/* WiFi 信息与折线图左右并排。
+   原来折线图是 wifi-col 的最后一个子元素、占 34% 高度，
+   竖屏 wifi-col 一矮就把它和「收发速率 / 信号强度」两行挤到一起，
+   看起来就是两条内容重叠。改成并排之后各占一列，互不挤压。 */
+.wifi-body{
+  flex:1;min-height:0;
+  display:grid;
+  grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);
+  gap:10px;
+  align-items:stretch;
+}
 .kv-list{
   list-style:none;
-  flex:1;min-width:0;min-height:0;
+  min-width:0;min-height:0;
   display:grid;
   grid-template-columns:1fr;
   grid-auto-rows:min-content;
@@ -626,9 +637,9 @@ body.landscape .hist-list li:nth-child(n+5){display:none;}
 .fc-list .fc-tmp i{font-style:normal;color:var(--text-mute);margin:0 2px;}
 .fc-list li.empty{display:flex;justify-content:center;color:var(--text-mute);}
 
-/* 下载速度折线图 */
+/* 下载速度折线图（现在与 WiFi 列表左右并排，高度跟着行高走，不再用百分比） */
 .net-chart-wrap{
-  flex:0 0 34%;min-width:0;min-height:0;
+  min-width:0;min-height:0;
   display:flex;flex-direction:column;gap:4px;
   background:rgba(255,255,255,0.022);
   border:1px solid rgba(255,255,255,0.05);
@@ -1050,11 +1061,13 @@ body.landscape .vram-num b{font-size:11px;}
 body.landscape .cores{margin-top:5px;min-height:14px;}
 body.landscape .stat{padding:4px 8px;}
 body.landscape .stat b{font-size:15px;}
-/* WiFi 左半：8 项在横屏改 2 列（4 行），字号压一档才装得下 */
-body.landscape .kv-list{grid-template-columns:1fr 1fr;gap:2px 14px;}
-body.landscape .kv-list li{font-size:11px;padding:0;}
-body.landscape .kv-list .k{font-size:10.5px;}
-body.landscape .net-chart-wrap{flex:0 0 40%;}
+/* WiFi 左半：横屏空间更紧，列表与折线图仍并排但折线图窄一点 */
+body.landscape .wifi-body{grid-template-columns:minmax(0,1.4fr) minmax(0,1fr);gap:8px;}
+body.landscape .kv-list{grid-template-columns:1fr;gap:1px;}
+body.landscape .kv-list li{font-size:10.5px;padding:0;column-gap:8px;}
+body.landscape .kv-list .k{font-size:10px;}
+body.landscape .net-chart-wrap{padding:4px 6px 3px;}
+body.landscape .net-chart-head{font-size:9.5px;}
 /* 存储卡：横屏的 disk 区只有 518px 宽，4 列时单卡仅 ~126px，
    "已用 164.2/255.0 GB  剩余 90.8" 一行塞不下会被截断。
    横屏改成 2 列 × 2 行，宽度翻倍，文字完整；竖屏仍是 4 列。 */
