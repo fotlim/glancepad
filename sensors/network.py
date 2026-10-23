@@ -473,8 +473,10 @@ def _cn_weather(city):
             m1 = re.search(r"<h1>(.*?)</h1>", it, re.S)
             mw = re.search(r'<p[^>]*class="wea"[^>]*>(.*?)</p>', it, re.S)
             mt = re.search(r'class="tem">(.*?)</p>', it, re.S)
-            hi = re.search(r"<span>(-?\d+)</span>", mt.group(1)) if mt else None
-            lo = re.search(r"<i>(-?\d+)", mt.group(1)) if mt else None
+            # 注意：温度节点是 <span>15℃</span> / <i>9℃</i>，度符号跟在数字后面，
+            # 所以这里只能匹配前缀数字，不能要求 </span> 紧跟（否则最高温永远解析成 None）。
+            hi = re.search(r"<span>\s*(-?\d+)", mt.group(1)) if mt else None
+            lo = re.search(r"<i>\s*(-?\d+)", mt.group(1)) if mt else None
             h1 = (m1.group(1).strip() if m1 else "")
             wea = (mw.group(1).strip() if mw else "")
             # "23日（今天）" -> date=10/23, label=今天
@@ -495,8 +497,11 @@ def _cn_weather(city):
                 "pop": None,
             })
 
-    # --- 预警（有就带一条，没有就空）---
+    # --- 预警（有就带一条，没有就空）+ 今日实况高温 ---
+    # dingzhi 这个文件同时含 cityDZ（今天的高低温）与 alarmDZ（预警），一次请求两用。
     alarm = ""
+    today_hi = today_lo = None
+    today_wea = ""
     try:
         dz = _cn_request("http://d1.weather.com.cn/dingzhi/%s.html" % code)
         # 注意：这个文件末尾不一定有分号（实测长春返回以 "}]}" 结尾），
@@ -506,8 +511,27 @@ def _cn_weather(city):
             aw = (json.loads(mz.group(1)).get("w") or [])
             if aw:
                 alarm = str(aw[0].get("w13") or aw[0].get("w5") or "").strip()
+        mc = re.search(r"cityDZ\d*\s*=\s*(\{.*?\})\s*;", dz, re.S)
+        if mc:
+            wi = (json.loads(mc.group(1)) or {}).get("weatherinfo") or {}
+            def _t(v):
+                mm2 = re.search(r"-?\d+(?:\.\d+)?", str(v or ""))
+                return int(float(mm2.group(0))) if mm2 else None
+            today_hi = _t(wi.get("temp"))
+            today_lo = _t(wi.get("tempn"))
+            today_wea = str(wi.get("weather") or "").strip()
     except Exception:
         pass
+
+    # 今天的 <p class="tem"> 只有最低温、没有最高温（当天白天已过/站点头条如此），
+    # 用 cityDZ 的 temp/tempn 补齐，否则面板上今天会显示 "--°/9°"。
+    if days and days[0]["max"] is None and today_hi is not None:
+        days[0]["max"] = today_hi
+    if days and days[0]["min"] is None and today_lo is not None:
+        days[0]["min"] = today_lo
+    if days and today_wea and days[0]["text"] in ("", "未知"):
+        days[0]["text"] = today_wea
+        days[0]["icon"] = _cn_icon(today_wea)
 
     temp = None
     try:

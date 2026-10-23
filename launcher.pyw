@@ -86,11 +86,23 @@ def save_settings(d):
 
 
 def server_alive():
-    try:
-        with urllib.request.urlopen(URL + "api/snapshot", timeout=1.5) as r:
-            return r.status == 200
-    except Exception:
-        return False
+    """探测服务是否在跑。
+
+    ⚠ 不能用 /api/snapshot！
+    /api/snapshot 要现采 CPU/GPU/内存/磁盘/网络/天气/一言/历史，
+    实测 4.5~5.6 秒才返回；原来这里 timeout=1.5 秒，于是服务明明在跑
+    也一律判成「没起来」——托盘点「启动监控」永远不会走「已在运行」分支，
+    而且 _wait_up() 20 秒后必定弹「启动超时」，用户看到的就是「打不开」。
+    改用轻量端点 /api/theme（实测 38ms，冷启动 651ms）+ 3 秒超时。
+    """
+    for ep in ("api/theme", "api/apps/version"):
+        try:
+            with urllib.request.urlopen(URL + ep, timeout=3.0) as r:
+                if r.status == 200:
+                    return True
+        except Exception:
+            continue
+    return False
 
 
 def run_ps(args, wait=False):

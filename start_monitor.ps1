@@ -27,6 +27,9 @@ $ROOT   = Split-Path -Parent $MyInvocation.MyCommand.Path
 # ------------------------------------------------------------ 依赖探测
 # 不写死任何人的安装路径。先问系统（PATH / App Paths 注册表），再退回常见位置。
 function Find-Python {
+    # 0) 安装包自带的运行时（exe 安装版才有），优先用它，保证与安装包里的依赖版本一致
+    $bundled = Join-Path $ROOT "python\python.exe"
+    if (Test-Path $bundled) { return $bundled }
     # 1) PATH 上的 python（排除 WindowsApps 的微软商店占位符）
     foreach ($n in @("python.exe", "python3.exe")) {
         $c = Get-Command $n -CommandType Application -EA SilentlyContinue |
@@ -221,9 +224,35 @@ function Get-TargetScreen {
 
 # ------------------------------------------------------------ 服务
 function Test-Server {
+    # 注意：绝对不能用 /api/snapshot 判活！
+    # 那个端点要串行采集 AIDA64 + LHM + psutil + nvidia-smi + 天气 + 一言 + 历史，
+    # 实测要 4.5~5.6 秒才回，而 /api/snapshot 之外还有个 LHM /sensors 就要 1.7 秒。
+    # 以前写 -TimeoutSec 2，于是永远超时 → 恒判「服务未运行」→
+    # 托盘点「启动监控」时又去起一个绑不上 8770 的进程 → 卡在 Read-Host → 副屏打不开。
+    # 这里改成轻量端点 /api/theme（实测 30~40ms）。
     try {
-        $r = Invoke-WebRequest ($URL + "api/snapshot") -TimeoutSec 2 -UseBasicParsing
+        $r = Invoke-WebRequest ($URL + "api/theme") -TimeoutSec 5 -UseBasicParsing
         return $r.StatusCode -eq 200
+    } catch { return $false }
+}
+
+# 以前的失败分支用 Read-Host 等回车：从托盘启动时脚本是隐藏窗口运行，
+# Read-Host 永远等不到输入 —— 进程就永久挂在那里，表现为「点了启动没反应」。
+# 这里只在确实有可见控制台时才停 3 秒，其余情况直接返回。
+function Pause-Exit {
+    $wid = [IntPtr]::Zero
+    try { $wid = (Get-Process -Id $PID).MainWindowHandle } catch {}
+    if ($wid -ne [IntPtr]::Zero) {
+        Write-Host "  3 秒后自动退出..." -ForegroundColor DarkGray
+        for ($i = 0; $i -lt 15; $i++) { Start-Sleep -Milliseconds 200 }
+    }
+}
+
+function Test-PortListen {
+    param([int]$P)
+    try {
+        $c = Get-NetTCPConnection -LocalPort $P -State Listen -EA Stop
+        return ($null -ne $c)
     } catch { return $false }
 }
 
@@ -439,12 +468,29 @@ Write-Host ""
 Start-Bridge
 
 # 1. 起服务
-if (Test-Server) {
+$svcOk = Test-Server
+
+# 端口在监听但 HTTP 探活失败：多半是服务正忙（/api/snapshot 采集要 5 秒）或刚起还没就绪，
+# 绝对不能当成「没运行」再起一个 —— 新进程绑不上 8770，会卡死在这里，副屏就开不出来。
+if (-not $svcOk -and (Test-PortListen -P $Port)) {
+    Write-Host "  端口 $Port 已被占用，等服务就绪..." -ForegroundColor Yellow
+    for ($i = 0; $i -lt 20; $i++) {
+        Start-Sleep -Milliseconds 500
+        if (Test-Server) { $svcOk = $true; break }
+    }
+    if ($svcOk) {
+        Write-Host "  服务已在运行，跳过启动" -ForegroundColor Green
+    } else {
+        Write-Host "  X 端口 $Port 被别的程序占着，但连不上监控服务。" -ForegroundColor Red
+        Write-Host "    先运行 .\start_monitor.ps1 -Stop 清掉旧进程再试" -ForegroundColor Yellow
+        Pause-Exit; return
+    }
+} elseif ($svcOk) {
     Write-Host "  服务已在运行，跳过启动" -ForegroundColor Green
 } else {
     if (-not (Test-Path $PY)) {
         Write-Host "  X 找不到 Python: $PY" -ForegroundColor Red
-        Read-Host "  回车退出"; return
+        Pause-Exit; return
     }
     Write-Host "  启动采集服务..." -ForegroundColor Yellow
     $p = Start-Process -FilePath $PY `
@@ -463,7 +509,7 @@ if (Test-Server) {
     }
     if (-not $ok) {
         Write-Host "  X 服务启动失败，看看日志：$LOG.err" -ForegroundColor Red
-        Read-Host "  回车退出"; return
+        Pause-Exit; return
     }
     Write-Host "  OK 服务就绪 (PID $($p.Id))" -ForegroundColor Green
 }
@@ -499,6 +545,24 @@ if (-not $NoBrowser) {
         )
         $cp = Start-Process -FilePath $CHROME -ArgumentList $chromeArgs -PassThru
         Write-Host "  OK 监控窗口已打开 (PID $($cp.Id))" -ForegroundColor Green
+
+        # 2.5 抢在窗口进任务栏之前打上 TOOLWINDOW（Chrome 建窗约 200~600ms）
+        # 原来只在 Set-TopMost 里做、且 400ms 才轮一次，从托盘点启动时
+        # 任务栏会有 0.4~1 秒的 Chrome 占位闪一下，用户看到就是「任务栏冒出活动窗口」。
+        # 这里用 60ms 高频补样式，把闪现压到几乎看不见。
+        for ($i = 0; $i -lt 30; $i++) {
+            $hit = 0
+            foreach ($h in (Get-WindowHandlesByPid -ProcId $cp.Id)) {
+                $ex = [WinApi]::GetWindowLong($h, [WinApi]::GWL_EXSTYLE)
+                $want = ($ex -bor [WinApi]::WS_EX_TOOLWINDOW) -band (-bnot [WinApi]::WS_EX_APPWINDOW)
+                if ($ex -ne $want) {
+                    [WinApi]::SetWindowLong($h, [WinApi]::GWL_EXSTYLE, $want) | Out-Null
+                    $hit++
+                }
+            }
+            if ($hit -eq 0 -and $i -ge 6) { break }
+            Start-Sleep -Milliseconds 60
+        }
 
         # 3. 等窗口出来再置顶（Chrome 是异步创建窗口的）
         if (-not $NoTopMost) {
