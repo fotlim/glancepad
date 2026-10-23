@@ -133,7 +133,7 @@ body.landscape .canvas{
      多出来的高度从 head / row2 挤，总 fr 仍是 5.30。
      head 行 0.44fr（≈135px）刚好贴住「时钟 63px + 一言 17px」与右侧日期+历史列表，
      再大就会在时钟和下面卡片之间空出一整块。 */
-  grid-template-rows:auto 1.44fr 1.26fr 1.56fr 0.44fr;
+  grid-template-rows:auto 1.40fr 1.52fr 1.34fr 0.44fr;
   grid-template-areas:
     "head  head  head"
     "cpu   gpu   chart"
@@ -525,11 +525,66 @@ body.landscape .hist-list li:nth-child(n+5){display:none;}
   min-width:0;min-height:0;
 }
 .wx-col{
-  display:flex;flex-direction:column;gap:8px;
+  /* 用 grid 而不是 flex：右栏必须严格等于 .wifi-split 的高度。
+     flex + flex:1 1 0 时，七天预报渲染完之后内容高度会把容器撑高，
+     邮箱那排被顶到卡片外面（实测画到 y=1062，卡片下沿只到 1042）。
+     grid 的 minmax(0,1fr) 轨道 + overflow:hidden 才能真正把上半压住。 */
+  position:relative;
+  display:grid;
+  grid-template-rows:minmax(0,1fr) 76px;
+  gap:10px;
+  height:100%;
   min-width:0;min-height:0;
+  overflow:hidden;
   border-left:1px solid rgba(255,255,255,0.07);
   padding-left:14px;
 }
+
+/* 右栏上下分配：上半天气（今日 + 七天预报），下半邮箱快捷方式。
+   邮箱用固定高度（一排图标，不需要更多），剩下的高度全给天气，
+   否则七天预报 7 行会被裁掉最后几行。 */
+.wx-weather{
+  min-height:0;
+  display:flex;flex-direction:column;gap:5px;
+  overflow:hidden;
+}
+.mail-box{
+  height:auto;min-height:0;box-sizing:border-box;
+  display:flex;flex-direction:column;gap:5px;
+  border-top:1px solid rgba(255,255,255,0.07);
+  padding-top:7px;
+  overflow:hidden;
+}
+.mail-head{display:flex;align-items:center;gap:6px;flex:0 0 auto;}
+.tag-mail{background:rgba(255,122,156,0.14);color:var(--pink);}
+.mail-tip{font-size:10.5px;color:var(--text-mute);}
+.mail-grid{
+  flex:1;min-height:0;
+  display:grid;
+  grid-template-columns:repeat(4,1fr);
+  gap:8px;
+  align-items:stretch;
+}
+.mail-item{
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;
+  border-radius:10px;cursor:pointer;
+  border:1px solid rgba(255,255,255,0.06);
+  background:rgba(255,255,255,0.028);
+  transition:transform .15s ease, background .15s ease, border-color .15s ease;
+  min-width:0;overflow:hidden;
+}
+.mail-item:hover{
+  background:rgba(255,255,255,0.075);
+  border-color:rgba(79,209,197,0.55);
+  transform:translateY(-2px);
+}
+.mail-item:active{transform:translateY(0) scale(0.97);}
+.mail-logo{
+  font-size:15px;font-weight:700;line-height:1;
+  font-variant-numeric:tabular-nums;
+  color:var(--text);
+}
+.mail-name{font-size:10.5px;color:var(--text-dim);line-height:1;}
 
 /* WiFi 信息与折线图左右并排。
    原来折线图是 wifi-col 的最后一个子元素、占 34% 高度，
@@ -636,6 +691,24 @@ body.landscape .hist-list li:nth-child(n+5){display:none;}
 .fc-list .fc-tmp b{color:var(--text);font-weight:600;}
 .fc-list .fc-tmp i{font-style:normal;color:var(--text-mute);margin:0 2px;}
 .fc-list li.empty{display:flex;justify-content:center;color:var(--text-mute);}
+
+/* ---- 天气压缩：右栏要腾出下半截给邮箱，天气只剩约 60% 高度。
+        图标 / 气温 / 说明文字降一档，七天预报行高也压实，
+        保证 7 行仍能完整放下不被裁。 ---- */
+.wx-weather .wx-today{gap:2px;}
+.wx-weather .wx-today-main{gap:6px;}
+.wx-weather .wx-icon{font-size:20px;filter:drop-shadow(0 0 8px rgba(255,200,120,0.35));}
+.wx-weather .wx-temp b{font-size:22px;}
+.wx-weather .wx-temp i{font-size:11px;}
+.wx-weather .wx-text{font-size:11.5px;letter-spacing:0;}
+.wx-weather .wx-range{font-size:10px;}
+.wx-weather .wx-sub{font-size:9.5px;gap:3px;}
+.wx-weather .wx-alarm{font-size:9px;}
+.wx-weather .fc-list{gap:0;justify-content:flex-start;}
+.wx-weather .fc-list li{font-size:9.5px;padding:0;gap:5px;line-height:1.5;}
+.wx-weather .fc-list .fc-day b{font-size:8.5px;margin-left:2px;}
+.wx-weather .fc-list .fc-ico{font-size:9.5px;}
+.wx-weather .fc-list .fc-tmp{font-size:9.5px;}
 
 /* 下载速度折线图（现在与 WiFi 列表左右并排，高度跟着行高走，不再用百分比） */
 .net-chart-wrap{
@@ -1089,3 +1162,26 @@ body.landscape .temp-list{gap:0;justify-content:space-between;}
 body.landscape .temp-list li{font-size:11px;padding:0;}
 body.landscape .temp-list .t-bar{width:34px;height:3px;}
 body.landscape .temp-list .t-val{width:34px;font-size:10.5px;}
+
+/* ===== 横屏：WiFi 卡只有 183px 高，右栏要给天气 + 邮箱两条 ===== */
+/* 竖屏时 .wx-col 第二行是 76px（一排邮箱按钮），横屏高度不够，
+   压到 58px 并缩小按钮内字号；天气那半只显示前 5 天预报，
+   否则 7 行会溢出 100px+ 被裁掉（实测 fc:lastBottom = -116）。 */
+body.landscape .wx-col{grid-template-rows:minmax(0,1fr) 52px;gap:5px;}
+body.landscape .wx-weather{gap:3px;}
+body.landscape .wx-weather .wx-today-main{gap:5px;}
+body.landscape .wx-weather .wx-icon{font-size:16px;}
+body.landscape .wx-weather .wx-temp b{font-size:18px;}
+body.landscape .wx-weather .wx-temp i{font-size:10px;}
+body.landscape .wx-weather .fc-list li{font-size:9px;line-height:1.3;gap:4px;}
+body.landscape .wx-weather .fc-list li{font-size:8.5px;line-height:1.12;gap:3px;}
+body.landscape .wx-weather .fc-list .fc-day b{font-size:7.5px;}
+body.landscape .wx-weather .wx-today{gap:1px;}
+body.landscape .wx-weather .wx-temp b{font-size:16px;}
+body.landscape .wx-weather .wx-alarm{display:none;}
+body.landscape .mail-box{gap:3px;padding-top:5px;}
+body.landscape .mail-head{gap:4px;}
+body.landscape .mail-tip{display:none;}
+body.landscape .mail-grid{gap:6px;}
+body.landscape .mail-logo{font-size:12px;}
+body.landscape .mail-name{font-size:9px;}

@@ -953,6 +953,34 @@
     }
   }
 
+  // ---------------- 邮箱快捷方式（点一下用默认浏览器打开登录页） ----------------
+  // 只用登录页 URL，不碰任何账号密码，也不存 cookie —— 在浏览器里自己登录即可。
+  const MAILBOXES = [
+    { key: "163",     name: "163",     url: "https://mail.163.com/",        color: "#e8443a" },
+    { key: "126",     name: "126",     url: "https://mail.126.com/",        color: "#2f7cd6" },
+    { key: "outlook", name: "Outlook", url: "https://outlook.live.com/mail/", color: "#0a84ff" },
+    { key: "gmail",   name: "Gmail",   url: "https://mail.google.com/",     color: "#ea4335" },
+  ];
+
+  function renderMail() {
+    const grid = $("mailGrid");
+    if (!grid) return;
+    grid.innerHTML = MAILBOXES.map((m) => `
+      <div class="mail-item" data-url="${m.url}" title="${m.name} 邮箱 · ${m.url}">
+        <span class="mail-logo" style="color:${m.color}">${m.name}</span>
+        <span class="mail-name">${m.name}</span>
+      </div>`).join("");
+    [...grid.querySelectorAll(".mail-item")].forEach((el) => {
+      el.addEventListener("click", () => {
+        const url = el.dataset.url;
+        if (!url) return;
+        // 面板是全屏 kiosk，必须开新窗口/新标签，不能在当前页跳走
+        const w = window.open(url, "_blank", "noopener,noreferrer");
+        if (!w) location.href = url;
+      });
+    });
+  }
+
   // 设置改了之后（设置程序保存 settings.json），立刻刷新 Dock
   window.addEventListener("focus", () => {
     if (!STATIC_MODE) loadApps();
@@ -1051,10 +1079,20 @@
         out["last:" + (cls || i)] = Math.round(r.bottom - last.bottom);
       }
     });
-    document.querySelectorAll(".gpu-extra, .vram-box, .vram-bar, .net-chart-wrap, .wifi-body, .kv-list, .mu-lyric").forEach((el) => {
+    document.querySelectorAll(".gpu-extra, .vram-box, .vram-bar, .net-chart-wrap, .wifi-body, .kv-list, .mu-lyric, .wx-col, .wx-weather, .mail-box, .mail-head, .mail-grid").forEach((el) => {
       const r = el.getBoundingClientRect();
       out["el:" + el.className.split(" ")[0]] = [Math.round(r.x), Math.round(r.y), Math.round(r.width), Math.round(r.height)];
     });
+    const mg = $("mailGrid");
+    if (mg) {
+      out["mail:count"] = mg.children.length;
+      out["mail:scrollH"] = mg.scrollHeight;
+      const first = mg.firstElementChild;
+      if (first) {
+        const fr = first.getBoundingClientRect();
+        out["mail:first"] = [Math.round(fr.x), Math.round(fr.y), Math.round(fr.width), Math.round(fr.height)];
+      }
+    }
     const fcEl = $("fcList");
     if (fcEl) {
       out["fc:count"] = fcEl.children.length;
@@ -1074,6 +1112,7 @@
     fitNetCanvas();
     drawNetChart();
     loadApps();
+    renderMail();
     bindMedia();
     startEq();
     pollMedia();

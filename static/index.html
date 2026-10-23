@@ -172,8 +172,9 @@
           </div><!-- /.wifi-body -->
         </div>
 
-        <!-- 右：今日天气 + 七天预报 -->
+        <!-- 右：上半 今日天气 + 七天预报；下半 邮箱快捷方式 -->
         <div class="wx-col">
+          <div class="wx-weather">
           <div class="wx-today">
             <div class="wx-today-main">
               <span class="wx-icon" id="wxIcon">🌡️</span>
@@ -197,6 +198,16 @@
           <ul class="fc-list" id="fcList">
             <li class="empty">七天预报…</li>
           </ul>
+          </div><!-- /.wx-weather -->
+
+          <!-- 下半：邮箱快捷方式（点一下用默认浏览器打开对应邮箱登录页） -->
+          <div class="mail-box">
+            <div class="mail-head">
+              <span class="tag tag-mail">邮箱</span>
+              <span class="mail-tip">点图标打开</span>
+            </div>
+            <div class="mail-grid" id="mailGrid"></div>
+          </div>
         </div>
       </div>
     </section>

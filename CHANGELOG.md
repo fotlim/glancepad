@@ -3,6 +3,36 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.1.3] - 2026-10-23
+
+网络卡片三处可读性修复，并把右半空间重新分配成「天气 + 邮箱快捷方式」。
+
+### 新增
+
+- **邮箱快捷方式**：网络卡右半下半新增四个邮箱按钮 —— **163 / 126 / Outlook / Gmail**，
+  点一下在新标签打开对应网页版邮箱（弹窗被拦时退化为当前页跳转）。
+  地址列表在 `static/app.js` 的 `MAILBOXES` 数组里，改哪家、改顺序都只动这一处。
+- 布局上把右半拆成 `.wx-weather`（天气）+ `.mail-box`（邮箱）两块，
+  竖屏用 `grid-template-rows:minmax(0,1fr) 76px`、横屏用 `minmax(0,1fr) 52px`，天气区自动吃掉剩余高度。
+
+### 变更
+
+- **天气区高度压一半**：右半让出一半给邮箱后，天气的图标 / 温度 / 文字 / 七天预报逐级降字号，
+  七天预报 7 行在竖屏与横屏下都完整显示（`fc:lastBottom` 竖屏 8、横屏 2，均未裁切）。
+
+### 修复
+
+- **WiFi 列表「文字不对版」**：`.kv-list li` 从 flex 改网格 `grid-template-columns:5.8em minmax(0,1fr)`，
+  数值由 `text-align:right` 改为 `text-align:left` —— 之前标签宽度随文字变、数值又右对齐，
+  短值（WLAN）会飘到最右，看起来像「值配错了标签」。
+- **竖屏收发速率 / 信号强度与折线图重叠**：`.net-chart-wrap` 从列表下方移出，与 `.kv-list` 左右并排（`minmax(0,1.15fr) minmax(0,1fr)`）。
+- **第 8 行「信号强度」被裁**：并排后 WiFi 列表获得独立列宽，8 行全部完整可见。
+
+> 排查记录：邮箱按钮曾连续多轮被判「不可见」，实际是 `?static=1` 静态模式下
+> `getBoundingClientRect()` 与 `.canvas{transform:scale()}` 的实际绘制位置有 60~70px 偏差，
+> 按 DOM 坐标裁图当然裁不到。最终用「临时背景色探针 + 全图品牌色扫描」取真实 bbox 才定位清楚。
+> 判断元素是否可见时别信 DOM 矩形。
+
 ## [1.1.2] - 2026-10-23
 
 自定义背景图下的可读性大改，顶部时钟与一言继续放大。
@@ -170,6 +200,8 @@
 - AIDA64 通道需要手动在「设置 → 外部应用程序」里勾选「允许共享内存」或「允许将监测数据写入注册表」；AIDA64 的界面是 Delphi 自绘，无法可靠自动化，故本版本不做自动开启。
 - 歌词中文匹配依赖 lrclib / 网易云曲库，冷门歌曲可能搜不到。
 
+[1.1.3]: https://github.com/fotlim/glancepad/releases/tag/v1.1.3
+[1.1.2]: https://github.com/fotlim/glancepad/releases/tag/v1.1.2
 [1.1.1]: https://github.com/fotlim/glancepad/releases/tag/v1.1.1
 [1.1.0]: https://github.com/fotlim/glancepad/releases/tag/v1.1.0
 [1.0.3]: https://github.com/fotlim/glancepad/releases/tag/v1.0.3
