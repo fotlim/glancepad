@@ -518,6 +518,46 @@ def api_launch():
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
+# 允许从面板「外部打开」的站点白名单（只放行邮箱登录页的域名）。
+# 为什么需要外部打开：副屏面板是 Chrome --kiosk 全屏，window.open 出来的新标签
+# 会顶掉面板本身，而 kiosk 没有标签栏/地址栏，用户就再也回不到监控画面了。
+# 所以邮箱链接交给系统默认浏览器（主屏普通窗口）打开，面板保持不动。
+_OPEN_URL_HOSTS = {
+    "mail.163.com", "mail.126.com",
+    "outlook.live.com", "outlook.office.com",
+    "mail.google.com", "accounts.google.com",
+}
+
+
+@app.route("/api/open-url", methods=["POST"])
+def api_open_url():
+    """用系统默认浏览器打开白名单内的网址（副屏面板保持不动）。"""
+    from flask import request
+    from urllib.parse import urlparse
+    try:
+        body = request.get_json(force=True, silent=True) or {}
+        url = (body.get("url") or "").strip()
+        if not url:
+            return jsonify({"ok": False, "error": "缺少 url"}), 400
+        p = urlparse(url)
+        if p.scheme not in ("http", "https"):
+            return jsonify({"ok": False, "error": "只允许 http/https"}), 403
+        host = (p.hostname or "").lower()
+        if host not in _OPEN_URL_HOSTS:
+            return jsonify({"ok": False, "error": "该域名不在白名单里: %s" % host}), 403
+        try:
+            os.startfile(url)  # type: ignore[attr-defined]
+        except OSError:
+            import webbrowser
+            if not webbrowser.open(url):
+                return jsonify({"ok": False, "error": "无法调用默认浏览器"}), 500
+        log.info("外部浏览器打开: %s", url)
+        return jsonify({"ok": True})
+    except Exception as e:
+        log.exception("打开网址失败")
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
 def _first_exist(paths):
     """返回第一个真实存在的路径，都不存在则 None"""
     for p in paths:

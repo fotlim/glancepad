@@ -1087,6 +1087,16 @@ def main():
         import webbrowser
         webbrowser.open(URL)
 
+    def do_reshow():
+        """把监控画面重新拉回副屏。
+
+        用途：万一在 kiosk 全屏里误开了页面（比如点邮箱链接跳到网页），
+        面板被顶掉了、又没法退出全屏，从托盘点这一项就能一键恢复。
+        直接跑 start_monitor.ps1：它会关掉旧监控窗口再重开一个全屏 kiosk。
+        """
+        run_ps(["-Port", str(PORT)])
+        refresh_tray()
+
     def do_toggle_auto():
         ok, msg = set_autostart(not autostart_enabled())
         logerr("toggle autostart: %s %s" % (ok, msg))
@@ -1112,6 +1122,7 @@ def main():
         pystray.MenuItem("启动监控", lambda: threading.Thread(target=do_start, daemon=True).start(),
                          default=True),
         pystray.MenuItem("停止监控", lambda: threading.Thread(target=do_stop, daemon=True).start()),
+        pystray.MenuItem("重新显示监控画面", lambda: threading.Thread(target=do_reshow, daemon=True).start()),
         pystray.Menu.SEPARATOR,
         pystray.MenuItem("设置…", lambda: do_open()),
         pystray.MenuItem("打开监控页面", lambda: do_web()),

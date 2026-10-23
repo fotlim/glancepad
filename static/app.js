@@ -974,9 +974,22 @@
       el.addEventListener("click", () => {
         const url = el.dataset.url;
         if (!url) return;
-        // 面板是全屏 kiosk，必须开新窗口/新标签，不能在当前页跳走
-        const w = window.open(url, "_blank", "noopener,noreferrer");
-        if (!w) location.href = url;
+        // 关键：面板是 Chrome --kiosk 全屏（没有地址栏/标签栏/关闭按钮）。
+        // 用 window.open 会把新标签开到同一个 kiosk 窗口里，把监控画面顶掉，
+        // 用户就再也回不来了。所以改成让后端用系统默认浏览器（主屏普通窗口）打开，
+        // 副屏面板原样留在原地。
+        el.style.opacity = "0.55";
+        fetch("/api/open-url", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ url }),
+        })
+          .then((r) => r.json())
+          .then((j) => {
+            if (!j.ok) console.warn("打开邮箱失败:", j.error);
+          })
+          .catch((e) => console.warn("打开邮箱失败:", e))
+          .finally(() => { setTimeout(() => { el.style.opacity = ""; }, 400); });
       });
     });
   }
