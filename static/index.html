@@ -262,7 +262,8 @@
             <div class="mu-title" id="muTitle">未在播放</div>
             <div class="mu-artist" id="muArtist">打开网易云 / QQ 音乐放一首歌</div>
           </div>
-          <div class="mu-bar"><i id="muProg"></i></div>
+          <!-- 波浪进度条（Material 3 Wavy）：SVG 波浪 + 按进度裁剪，播放时缓慢流动 -->
+          <div class="mu-wave" id="muWave"></div>
           <div class="mu-times"><span id="muPos">0:00</span><span id="muDur">0:00</span></div>
           <div class="mu-ctrl">
             <button class="mu-btn" data-act="prev" title="上一首">⏮</button>
@@ -276,9 +277,10 @@
           </div>
           <div class="mu-lyric" id="muLyricBox">
             <div class="mu-eq" id="muEq"></div>
-            <div class="ly-prev" id="muLyricPrev"></div>
-            <div class="ly-cur" id="muLyric">♪ 暂无歌词</div>
-            <div class="ly-next" id="muLyricNext"></div>
+            <div class="pv-stage" id="muPvStage">
+              <div class="pv-track" id="muPvTrack"></div>
+            </div>
+            <div class="pv-hint" id="muPvHint">♪ 暂无歌词</div>
           </div>
         </div>
       </section>

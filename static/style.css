@@ -710,6 +710,52 @@ body.landscape .hist-list li:nth-child(n+5){display:none;}
 .wx-weather .fc-list .fc-ico{font-size:9.5px;}
 .wx-weather .fc-list .fc-tmp{font-size:9.5px;}
 
+/* ---- 竖屏：七天预报改成「竖排卡片」----
+   原来是 7 行横条（日期在左、温度在右），中间留一大条空白、字号被压到 9.5px。
+   现在每天占一列：星期/日期 → 天气图标 → 最高温/最低温 从上往下堆叠，
+   列高用 space-between 撑满整个预报区，横向也把 448px 全用上，不再有死白。 */
+body.portrait .wx-weather .fc-list{
+  display:grid;
+  grid-template-columns:repeat(7,minmax(0,1fr));
+  align-items:stretch;
+  justify-content:stretch;
+  gap:0;
+  flex:1 1 auto;
+  min-height:0;
+  margin-top:2px;
+  padding-top:5px;
+  border-top:1px solid rgba(255,255,255,0.07);
+}
+body.portrait .wx-weather .fc-list li{
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:space-between;
+  gap:2px;
+  padding:2px 1px 4px;
+  font-size:10px;
+  line-height:1.15;
+  min-width:0;
+  border-left:1px solid rgba(255,255,255,0.055);
+}
+body.portrait .wx-weather .fc-list li:first-child{border-left:0;}
+body.portrait .wx-weather .fc-list .fc-day{
+  display:flex;flex-direction:column;align-items:center;gap:1px;
+  white-space:nowrap;font-size:13px;line-height:1.2;font-weight:600;
+  color:var(--text);text-shadow:0 1px 2px rgba(0,0,0,.55);
+}
+body.portrait .wx-weather .fc-list .fc-day b{
+  font-size:10px;margin-left:0;opacity:1;font-weight:400;
+  color:var(--text-dim);text-shadow:0 1px 2px rgba(0,0,0,.5);
+}
+body.portrait .wx-weather .fc-list .fc-ico{font-size:24px;line-height:1;margin:0;}
+body.portrait .wx-weather .fc-list .fc-tmp{
+  display:flex;flex-direction:column;align-items:center;gap:0;
+  font-size:11px;line-height:1.15;color:var(--text-dim);
+}
+body.portrait .wx-weather .fc-list .fc-tmp b{font-size:15px;line-height:1.1;text-shadow:0 1px 2px rgba(0,0,0,.45);}
+body.portrait .wx-weather .fc-list .fc-tmp i{display:none;}
+
 /* 下载速度折线图（现在与 WiFi 列表左右并排，高度跟着行高走，不再用百分比） */
 .net-chart-wrap{
   min-width:0;min-height:0;
@@ -838,16 +884,42 @@ body.landscape .hist-list li:nth-child(n+5){display:none;}
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
   margin-top:2px;
 }
-.mu-bar{
-  height:4px;border-radius:3px;
-  background:rgba(255,255,255,0.09);
+/* 波浪进度条（Material 3 Wavy Progress）：一条起伏的带子，走过的部分点亮 */
+.mu-wave{
+  position:relative;
+  height:26px;
+  margin:0 0 0;
+  --p:0%;
   overflow:hidden;
 }
-.mu-bar i{
-  display:block;height:100%;width:0;border-radius:3px;
-  background:linear-gradient(90deg,var(--pink),var(--violet));
-  transition:width .35s linear;
+.mu-wave svg{display:block;width:100%;height:100%;overflow:visible;}
+/* 底：整条暗波浪 */
+.mu-wave .wv-base{
+  fill:none;stroke:rgba(255,255,255,0.30);stroke-width:5.5;
+  stroke-linecap:round;stroke-linejoin:round;
 }
+/* 面：亮色波浪，用 dash 假装「只画到进度」，比 clip 省一个节点
+   （dasharray / dashoffset 由 JS 按真实路径长度写，避免 calc 混算 % 出错） */
+.mu-wave .wv-fill{
+  fill:none;stroke:url(#muWaveGrad);stroke-width:6;
+  stroke-linecap:round;stroke-linejoin:round;
+  transition:stroke-dashoffset .35s linear;
+  filter:drop-shadow(0 0 4px rgba(255,122,156,0.5));
+}
+/* 播放中让波浪自己缓慢起伏，停下就冻住（省 GPU） */
+.mu-wave.on svg{
+  animation:muWaveDrift 3.4s linear infinite alternate;
+}
+.mu-wave.on .wv-fill{animation:muWavePulse 2.2s ease-in-out infinite;}
+@keyframes muWaveDrift{
+  from{transform:translateX(-3px);}
+  to{transform:translateX(3px);}
+}
+@keyframes muWavePulse{
+  0%,100%{filter:drop-shadow(0 0 3px rgba(255,122,156,0.42));}
+  50%{filter:drop-shadow(0 0 7px rgba(255,122,156,0.72));}
+}
+.mu-wave.idle{opacity:.45;}
 .mu-times{
   display:flex;justify-content:space-between;
   font-size:10px;color:var(--text-mute);
@@ -908,11 +980,12 @@ body.landscape .hist-list li:nth-child(n+5){display:none;}
   font-variant-numeric:tabular-nums;
   width:18px;text-align:right;
 }
+/* ---- 歌词 PV：整首歌词随播放滚动，当前句放大发光并做卡拉OK 填充 ---- */
 .mu-lyric{
   flex:1;min-height:0;
-  display:flex;flex-direction:column;justify-content:space-evenly;gap:4px;
+  display:flex;flex-direction:column;
   border-top:1px solid rgba(255,255,255,0.06);
-  padding:8px 2px 2px;
+  padding:6px 2px 2px;
   overflow:hidden;
   position:relative;
 }
@@ -921,14 +994,60 @@ body.landscape .hist-list li:nth-child(n+5){display:none;}
   justify-content:flex-end;align-items:stretch;
   opacity:.9;
 }
-.mu-lyric.idle .ly-prev,
-.mu-lyric.idle .ly-next{display:none;}
-.mu-lyric.idle .ly-cur{
+.mu-lyric.idle .pv-stage{display:none;}
+.pv-hint{display:none;}
+.mu-lyric.idle .pv-hint{
+  display:block;
   color:var(--text-mute);font-size:11.5px;
-  text-shadow:none;
   white-space:normal;text-align:center;
   line-height:1.5;opacity:.75;
   margin-top:4px;
+}
+.pv-stage{
+  flex:1;min-height:0;position:relative;overflow:hidden;
+  /* 上下淡出，让滚动的歌词从雾里进、往雾里出（别吃掉太多，字够大要留地方） */
+  -webkit-mask-image:linear-gradient(to bottom,transparent 0,#000 9%,#000 91%,transparent 100%);
+  mask-image:linear-gradient(to bottom,transparent 0,#000 9%,#000 91%,transparent 100%);
+}
+.pv-track{
+  position:absolute;left:0;right:0;top:0;
+  will-change:transform;
+  transform:translate3d(0,0,0);
+  transition:transform .58s cubic-bezier(.22,.61,.36,1);
+}
+.pv-line{
+  /* 字号/透明度由 JS 按「离当前句多远」逐行写 inline style（--d 只做兜底） */
+  font-size:15px;
+  line-height:1.42;
+  font-weight:500;
+  color:#e6eef8;
+  opacity:.34;
+  padding:2px 6px;
+  text-align:center;
+  white-space:normal;
+  word-break:break-word;
+  transition:opacity .4s ease, font-size .4s ease, color .4s ease;
+}
+.pv-line.act{
+  font-size:22px;
+  font-weight:800;
+  letter-spacing:.5px;
+  opacity:1;
+  /* 卡拉OK 填充：唱过的部分是亮青，没唱到的是偏白，两边都够亮看得清 */
+  background-image:linear-gradient(90deg,
+      #b9fff5 0%, #4fd1c5 46%,
+      rgba(238,246,255,0.95) 46.01%, rgba(238,246,255,0.95) 100%);
+  background-size:220% 100%;
+  background-position:100% 0;
+  -webkit-background-clip:text;background-clip:text;
+  color:transparent;
+  filter:drop-shadow(0 0 10px rgba(79,209,197,0.55))
+         drop-shadow(0 0 22px rgba(79,209,197,0.28));
+  animation:pvFill var(--dur,4s) linear forwards;
+}
+@keyframes pvFill{
+  from{background-position:100% 0;}
+  to{background-position:0 0;}
 }
 /* 待机频谱（纯装饰，不表示真实音量）：压成一条窄带，别把整张卡占满 */
 .mu-eq{
@@ -943,21 +1062,6 @@ body.landscape .hist-list li:nth-child(n+5){display:none;}
   flex:1;border-radius:2px 2px 0 0;
   background:linear-gradient(to top, rgba(79,209,197,0.55), rgba(91,157,255,0.9));
   transition:height .6s ease;
-}
-.ly-prev,
-.ly-next{
-  font-size:11.5px;color:var(--text-mute);
-  line-height:1.4;
-  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
-  opacity:.62;
-  transition:opacity .25s;
-}
-.ly-cur{
-  font-size:15px;font-weight:500;color:var(--cyan);
-  line-height:1.4;
-  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
-  text-shadow:0 0 14px rgba(79,209,197,0.35);
-  transition:opacity .25s;
 }
 
 /* ---------------- 存储：每盘一块，2x2 铺开（已压矮） ---------------- */

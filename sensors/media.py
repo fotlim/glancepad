@@ -8,8 +8,15 @@
         都会注册会话，可以读 歌名/歌手/专辑/播放状态/进度，也能控制 播放/暂停/上一首/下一首。
   2. pycaw 读改系统主音量。
 
-歌词：按「歌名 + 歌手」去 lrclib.net 搜（免费无 key，中文库不错），
-      失败再退到网易云歌词接口。结果按 (title, artist) 缓存，不重复请求。
+歌词：按「歌名 + 歌手 + 时长」去**网易云**搜（中文库最全、简体），
+      查不到再退到 lrclib.net（免费无 key，但华语歌常只有繁体）。两条链路都按
+      时长/歌名/歌手 打分挑最像原曲的那一条，结果按 (title, artist, duration) 缓存。
+
+      网易云注意两点（2026-10 实测）：
+        1. 老接口 /api/search/get/web 现在恒返回 405「操作频繁」，必须用
+           /api/cloudsearch/pc 搜歌。
+        2. 取歌词时 lv=1 对大量歌曲直接返回空串，要用 lv=-1 kv=-1 tv=-1
+           才会带上逐行歌词。
 """
 from __future__ import annotations
 
@@ -17,6 +24,7 @@ import asyncio
 import re
 import threading
 import time
+from difflib import SequenceMatcher
 
 import requests
 
@@ -24,9 +32,12 @@ import requests
 _state = {"t": 0.0, "v": None}
 _TTL = 1.2                      # 会话状态缓存秒数
 _lyr = {"key": None, "t": 0.0, "lines": []}
-_LYR_TTL = 1800
+_LYR_TTL = 1800          # 命中歌词缓存 30 分钟
+_LYR_MISS_TTL = 180      # 没歌词也别每帧重查（否则每 1.5s 卡 10 秒），3 分钟后再试
 
 _lock = threading.Lock()
+_pending = set()          # 正在后台查歌词的 key，防止同一首并发起一堆线程
+_pos = {"key": None, "v": 0.0}   # 上次外推出来的播放进度（暂停时沿用）
 
 _UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
        "(KHTML, like Gecko) Chrome/126.0 Safari/537.36")
@@ -93,8 +104,33 @@ async def _snapshot_async():
         pass
     try:
         tl = s.get_timeline_properties()
-        out["position"] = tl.position.total_seconds()
+        raw_pos = tl.position.total_seconds()
         out["duration"] = tl.end_time.total_seconds()
+        out["position"] = raw_pos
+        # 有些播放器（Foliamajor 这类第三方壳）注册了 SMTC 却**从不推进 position**，
+        # 每次都停在 0.0x 秒，歌词就永远卡在「前奏」。这里用 last_updated_time
+        # 自己外推出当前进度：播放器真在推 position 时，last_updated_time 也会跟着变，
+        # delta ≈ 0，不会重复累加。
+        key = (out["title"], out["artist"], out["duration"])
+        if out["playing"]:
+            pos2 = raw_pos
+            last = getattr(tl, "last_updated_time", None)
+            if last is not None:
+                import datetime as _dt
+                try:
+                    delta = (_dt.datetime.now(_dt.timezone.utc) - last).total_seconds()
+                except Exception:
+                    delta = 0.0
+                if 0 < delta < 3600:
+                    pos2 = raw_pos + delta
+            if out["duration"] and pos2 > out["duration"] + 2:
+                pos2 = out["duration"]
+            out["position"] = pos2
+            _pos["key"], _pos["v"] = key, pos2
+        else:
+            # 暂停时 position 不再推进，沿用最后一次算出来的位置，别跳回 0
+            if _pos["key"] == key:
+                out["position"] = _pos["v"]
     except Exception:
         pass
     return out
@@ -218,7 +254,84 @@ def _clean(s):
     return s.strip()
 
 
-def _lyr_lrclib(title, artist):
+def _norm(s):
+    """归一化：小写、去括号后缀、去空白与标点，用于歌名/歌手比对"""
+    if not s:
+        return ""
+    s = s.lower()
+    s = re.sub(r"[\(（\[【].*?[\)）\]】]", "", s)
+    s = re.sub(r"[\s\-_·・,，.。!！?？'\"“”‘’/\\]+", "", s)
+    return s
+
+
+def _score(name, artist, dur, want_title, want_artist, want_dur):
+    """给候选歌曲打分：歌名 > 歌手 > 时长。时长越接近原曲越可信（能排掉翻唱/伴奏/钢琴版）"""
+    sc = 0.0
+    nt, nt2 = _norm(name), _norm(want_title)
+    if nt and nt == nt2:
+        sc += 60
+    elif nt2:
+        sc += 40 * SequenceMatcher(None, nt, nt2).ratio()
+        if nt2 in nt:
+            sc += 8
+    na, na2 = _norm(artist), _norm(want_artist)
+    if na2:
+        if na == na2:
+            sc += 25
+        elif na2 and (na2 in na or na in na2):
+            sc += 15
+    if want_dur and dur:
+        d = abs(dur - want_dur)
+        if d <= 3:
+            sc += 25
+        elif d <= 8:
+            sc += 12
+        elif d <= 20:
+            sc += 3
+        elif d > 60:
+            sc -= 30
+    return sc
+
+
+_CREDIT_RE = re.compile(r"^([^:：]{1,12})[:：]\s*(.+)$")
+_CREDIT_KW = re.compile(
+    r"作词|作曲|编曲|制作|监制|混音|母带|和声|合声|录音|配唱|吉他|贝斯|鼓|键盘|弦乐|"
+    r"出品|发行|统筹|企划|策划|人声|版权|词|曲|Lyrics?|Composer|Arranger|Producer|"
+    r"Written|Performed|Mixed|Mastered",
+    re.IGNORECASE)
+
+
+def _strip_credits(lines, title=""):
+    """去掉署名行、纯音乐占位行、以及开头重复的歌名行。
+
+    署名行的两种长相：
+      「作词 : Chris Martin/Guy Berryman/...」—— 标签是关键词，内容再长也删；
+      「词版权管理方：北京梦织音传媒有限公司」—— 标签短、内容也短，一并删。
+    正常歌词里带冒号的句子（「我说：……」）标签长或内容长，不会被误删。
+    """
+    out = []
+    nt = _norm(title)
+    for i, (t, txt) in enumerate(lines):
+        s = txt.strip()
+        if not s:
+            continue
+        if "纯音乐" in s and len(s) <= 12:
+            continue
+        m = _CREDIT_RE.match(s)
+        if m:
+            label, body = m.group(1), m.group(2)
+            if _CREDIT_KW.search(label):
+                continue
+            if len(label.strip()) <= 8 and " " not in label.strip() and len(body) <= 30:
+                continue
+        if i < 3 and nt and nt in _norm(s) and ("-" in s or "(" in s or "（" in s):
+            continue
+        out.append((t, s))
+    return out
+
+
+def _lyr_lrclib(title, artist, dur=0.0):
+    """lrclib：一次搜多条，按时长挑最接近原曲的那条（避免拿成翻唱/现场版）"""
     try:
         r = requests.get("https://lrclib.net/api/search",
                          params={"track_name": title, "artist_name": artist},
@@ -226,59 +339,122 @@ def _lyr_lrclib(title, artist):
                          timeout=8)
         if r.status_code != 200:
             return []
+        best, best_sc = [], -1e9
         for it in (r.json() or []):
             sl = it.get("syncedLyrics")
-            if sl:
-                lines = _parse_lrc(sl)
-                if lines:
+            if not sl:
+                continue
+            lines = _strip_credits(_parse_lrc(sl), title)
+            if len(lines) < 3:
+                continue
+            sc = _score(it.get("trackName") or "", it.get("artistName") or "",
+                        float(it.get("duration") or 0), title, artist, dur)
+            if sc > best_sc:
+                best, best_sc = lines, sc
+        return best
+    except Exception:
+        pass
+    return []
+
+
+def _lyr_netease(title, artist, dur=0.0):
+    """网易云：搜歌用 cloudsearch/pc（老的 search/get/web 已 405），
+    取词用 lv=-1 kv=-1（lv=1 很多歌返回空串）"""
+    H = {"User-Agent": _UA, "Referer": "https://music.163.com/",
+         "Cookie": "appver=2.0.2; os=pc"}
+    try:
+        r = requests.post("https://music.163.com/api/cloudsearch/pc",
+                          data={"s": f"{title} {artist}".strip(),
+                                "type": 1, "limit": 10, "offset": 0},
+                          headers=H, timeout=8)
+        j = r.json()
+        songs = (j.get("result") or {}).get("songs") or []
+        ranked = []
+        for s in songs:
+            sid = s.get("id")
+            if not sid:
+                continue
+            nm = s.get("name") or ""
+            ar = "/".join((a or {}).get("name") or "" for a in (s.get("ar") or []))
+            ln = float(s.get("dt") or 0) / 1000.0
+            ranked.append((_score(nm, ar, ln, title, artist, dur), sid))
+        ranked.sort(reverse=True)
+        for _, sid in ranked[:3]:
+            for lv in (-1, 1):
+                try:
+                    r2 = requests.get("https://music.163.com/api/song/lyric",
+                                      params={"id": sid, "lv": lv, "kv": lv, "tv": -1},
+                                      headers=H, timeout=8)
+                    lrc = ((r2.json().get("lrc") or {}).get("lyric")) or ""
+                except Exception:
+                    continue
+                lines = _strip_credits(_parse_lrc(lrc), title)
+                if len(lines) >= 3 and lines[-1][0] > 20:
                     return lines
     except Exception:
         pass
     return []
 
 
-def _lyr_netease(title, artist):
-    H = {"User-Agent": _UA, "Referer": "https://music.163.com/"}
+def _lyrics_lookup(title, artist, dur):
+    """真正去网上找：网易云优先，lrclib 兜底。
+
+    为什么网易云优先：中文库最全，而且给的是**简体**歌词；lrclib 对周杰伦这类
+    华语老歌经常只有繁体版（「故事的小黃花」），面板上看着别扭。
+    """
+    tl = _clean(title)
+    ar = _clean(artist)
+    lines = _lyr_netease(tl, ar, dur)
+    if not lines:
+        lines = _lyr_lrclib(tl, ar, dur)
+    return lines
+
+
+def _lyrics_bg(key, title, artist, dur):
+    """后台线程跑检索，查完写缓存；失败也要记一笔，避免反复重试卡住"""
     try:
-        r = requests.post("https://music.163.com/api/search/get/web",
-                          data={"s": f"{title} {artist}".strip(),
-                                "type": 1, "limit": 5, "offset": 0},
-                          headers=H, timeout=8)
-        j = r.json()
-        songs = (j.get("result") or {}).get("songs") or []
-        for s in songs:
-            sid = s.get("id")
-            if not sid:
-                continue
-            r2 = requests.get("https://music.163.com/api/song/lyric",
-                              params={"id": sid, "lv": 1, "kv": 1, "tv": -1},
-                              headers=H, timeout=8)
-            lrc = ((r2.json().get("lrc") or {}).get("lyric")) or ""
-            lines = _parse_lrc(lrc)
-            if len(lines) >= 3 and lines[-1][0] > 20:
-                return lines
+        lines = _lyrics_lookup(title, artist, dur)
+        _lyr.update(key=key, t=time.time(), lines=lines)
     except Exception:
-        pass
-    return []
+        _lyr.update(key=key, t=time.time(), lines=[])
+    finally:
+        with _lock:
+            _pending.discard(key)
 
 
-def lyrics(title, artist):
-    """拿歌词行。优先 lrclib（干净），退到网易云。结果缓存 30 分钟。"""
+def lyrics(title, artist, dur=0.0, blocking=False):
+    """拿歌词行。
+
+    默认**绝不在请求线程里等网络**：命中缓存立刻返回；没命中就起一个后台线程去搜，
+    本次先返回 []（前端显示「这首歌没找到歌词」，几百毫秒后下一轮轮询就有了）。
+    旧实现同步请求，一首冷门歌要 10 秒，而前端 1.5s 轮询一次 → 请求堆积、面板卡住。
+    """
     title = (title or "").strip()
     artist = (artist or "").strip()
     if not title:
         return []
-    key = (_clean(title).lower(), _clean(artist).lower())
+    dur = float(dur or 0)
+    key = (_clean(title).lower(), _clean(artist).lower(), int(round(dur / 5.0)))
     now = time.time()
-    if _lyr["key"] == key and now - _lyr["t"] < _LYR_TTL and _lyr["lines"]:
-        return _lyr["lines"]
 
-    lines = _lyr_lrclib(_clean(title), _clean(artist))
-    if not lines:
-        lines = _lyr_netease(_clean(title), _clean(artist))
+    if _lyr["key"] == key:
+        fresh = _lyr["lines"] and (now - _lyr["t"] < _LYR_TTL)
+        miss_ok = (not _lyr["lines"]) and (now - _lyr["t"] < _LYR_MISS_TTL)
+        if fresh or miss_ok:
+            return _lyr["lines"]
 
-    _lyr.update(key=key, t=now, lines=lines)
-    return lines
+    if blocking:
+        lines = _lyrics_lookup(title, artist, dur)
+        _lyr.update(key=key, t=time.time(), lines=lines)
+        return lines
+
+    with _lock:
+        if key not in _pending:
+            _pending.add(key)
+            threading.Thread(target=_lyrics_bg,
+                             args=(key, title, artist, dur),
+                             daemon=True).start()
+    return _lyr["lines"] if _lyr["key"] == key else []
 
 
 def lyric_at(lines, pos):
@@ -297,6 +473,15 @@ def lyric_at(lines, pos):
     return idx, prev_, cur, nxt
 
 
+def lyric_lines(title="", artist="", dur=0.0):
+    """整首歌的歌词（[[秒, 文本], ...]），给前端做滚动 PV。
+    只读缓存：没查好就返回空，前端下一轮再要，绝不在请求线程里等网络。"""
+    if not title:
+        return []
+    lines = lyrics(title, artist, dur or 0.0)
+    return [[round(float(t), 2), s] for t, s in lines]
+
+
 # ============================================================
 #  给前端的一体化状态
 # ============================================================
@@ -306,7 +491,7 @@ def status():
     lines = []
     idx, prev_, cur, nxt = -1, "", "", ""
     if st.get("ok") and st.get("title"):
-        lines = lyrics(st["title"], st.get("artist", ""))
+        lines = lyrics(st["title"], st.get("artist", ""), st.get("duration") or 0)
         idx, prev_, cur, nxt = lyric_at(lines, st.get("position") or 0.0)
 
     # 会话已关但歌词还在飞的情况：也算 ok
@@ -341,7 +526,7 @@ if __name__ == "__main__":
     s = read()
     print("session:", json.dumps(s, ensure_ascii=False))
     if s.get("ok") and s.get("title"):
-        lines = lyrics(s["title"], s.get("artist", ""))
+        lines = lyrics(s["title"], s.get("artist", ""), s.get("duration") or 0, blocking=True)
         print("lyric lines:", len(lines))
         for t, txt in lines[:8]:
             print(f"  {t:7.2f}  {txt}")

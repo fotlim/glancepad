@@ -120,6 +120,32 @@ def api_media():
         return jsonify({"ok": False, "error": str(e)})
 
 
+@app.route("/api/lyrics")
+def api_lyrics():
+    """整首歌词一次性给前端做滚动 PV（只读缓存，不阻塞）。
+    参数给全就用参数，否则按当前在播的歌取。"""
+    from flask import request
+    try:
+        title = (request.args.get("title") or "").strip()
+        artist = (request.args.get("artist") or "").strip()
+        dur = 0.0
+        try:
+            dur = float(request.args.get("dur") or 0)
+        except Exception:
+            dur = 0.0
+        if not title:
+            st = media.read()
+            title = st.get("title") or ""
+            artist = st.get("artist") or ""
+            dur = st.get("duration") or 0.0
+        lines = media.lyric_lines(title, artist, dur) if title else []
+        return jsonify({"ok": True, "title": title, "artist": artist,
+                        "count": len(lines), "lines": lines})
+    except Exception as e:
+        log.exception("取整首歌词失败")
+        return jsonify({"ok": False, "error": str(e), "lines": [], "count": 0})
+
+
 @app.route("/api/media/control", methods=["POST"])
 def api_media_control():
     from flask import request

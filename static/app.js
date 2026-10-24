@@ -435,6 +435,61 @@
     tickEq();
   }
 
+  // ---- 波浪进度条（Material 3 Wavy 风格）----
+  // 一条正弦波浪当轨道：底下一根暗的走满全程，上面一根亮的用 dash 只画到进度处。
+  // 用 getTotalLength + dashoffset 而不是裁剪矩形，这样进度末端刚好停在波峰波谷上，不会切出直角。
+  let wvLen = 0, wvW = 0, wvDur = 0;
+  function buildWave() {
+    const box = $("muWave");
+    if (!box) return;
+    const w = Math.max(60, Math.round(box.clientWidth || 400));
+    // 注意：设计稿 864 宽会被缩到 0.398 倍，所以这里的「振幅 7px」到屏上只有 2.8px，
+    // 振幅必须给大些（7）才看得出波浪；高度 26 同理。
+    const h = 32, amp = 9, step = 34;
+    wvW = w;
+    let d = `M0 ${h / 2}`;
+    for (let x = 0, up = true; x < w; x += step, up = !up) {
+      // 二次贝塞尔交替上下，圆心在 h/2，控制点高度随 up 翻
+      d += ` Q${x + step / 2} ${up ? h / 2 - amp : h / 2 + amp} ${Math.min(x + step, w)} ${h / 2}`;
+    }
+    box.innerHTML =
+      `<svg viewBox="0 0 ${w} ${h}" width="100%" height="${h}" preserveAspectRatio="none">` +
+      // 注意：SVG 的 stop-color 属性不认 CSS 变量（var(--pink) 会整段失效变黑），
+      // 这里必须写字面色值。
+      `<defs><linearGradient id="muWaveGrad" x1="0" y1="0" x2="1" y2="0">` +
+      `<stop offset="0%" stop-color="#ff7a9c"/>` +
+      `<stop offset="55%" stop-color="#c792ff"/>` +
+      `<stop offset="100%" stop-color="#9a7dff"/>` +
+      `</linearGradient></defs>` +
+      `<path class="wv-base" d="${d}" vector-effect="non-scaling-stroke"/>` +
+      `<path class="wv-fill" d="${d}" vector-effect="non-scaling-stroke"/>` +
+      `</svg>`;
+    const f = box.querySelector(".wv-fill");
+    if (f) {
+      wvLen = f.getTotalLength() || 0;
+      f.style.strokeDasharray = `${wvLen} ${wvLen}`;
+      f.style.strokeDashoffset = String(wvLen);
+    }
+  }
+  function setWave(pct, playing, total) {
+    const box = $("muWave");
+    if (!box) return;
+    if (total !== undefined) wvDur = total;
+    if (!wvLen || Math.round(box.clientWidth || 0) !== wvW) buildWave();
+    const f = box.querySelector(".wv-fill");
+    if (f && wvLen) {
+      const p = Math.max(0, Math.min(1, (pct || 0) / 100));
+      f.style.strokeDashoffset = String(wvLen * (1 - p));
+    }
+    box.classList.toggle("on", !!playing);
+    box.classList.toggle("idle", !playing);
+  }
+  // 100ms 的本地小 tick 顺带把波浪往前推一点，别让进度条一格一格跳
+  function tickWave() {
+    if (!wvDur || !pvBase.playing) return;   // 暂停/没歌就别白写样式
+    setWave((pvNow() / wvDur) * 100, true);
+  }
+
   function renderMedia(m) {
     if (!m) return;
     const badge = $("muBadge");
@@ -458,35 +513,27 @@
 
     const pos = m.position || 0, dur = m.duration || 0;
     const pct = dur > 0 ? Math.min(100, (pos / dur) * 100) : 0;
-    const prog = $("muProg");
-    if (prog) prog.style.width = pct + "%";
+    setWave(pct, playing, dur);
     const p1 = $("muPos"); if (p1) p1.textContent = fmtTime(pos);
     const p2 = $("muDur"); if (p2) p2.textContent = fmtTime(dur);
 
     const play = $("muPlay");
     if (play) play.textContent = playing ? "⏸" : "▶";
 
-    // ---- 歌词：上一句 / 当前句 / 下一句 ----
+    // ---- 歌词：整首滚动 PV（当前句放大 + 卡拉OK 填充）----
     const box = $("muLyricBox");
-    const ly = $("muLyric"), lyP = $("muLyricPrev"), lyN = $("muLyricNext");
     const hasSong = !!(m.ok && m.title);
     if (box) box.classList.toggle("idle", !hasSong);
     if (!hasSong) {
-      if (ly) ly.textContent = "♪ 暂时没有播放 · 打开播放器就会显示歌词";
-      if (lyP) lyP.textContent = "";
-      if (lyN) lyN.textContent = "";
+      pvKey = "";
+      pvLines = [];
+      pvIdx = -1;
+      const hint = $("muPvHint");
+      if (hint) hint.textContent = "♪ 暂时没有播放 · 打开播放器就会显示歌词";
+      const track0 = $("muPvTrack");
+      if (track0) track0.innerHTML = "";
     } else {
-      if (ly) {
-        if (m.lyric) {
-          ly.textContent = m.lyric;
-          ly.style.opacity = "1";
-        } else {
-          ly.textContent = m.has_lyric ? "♪ 纯音乐 / 前奏" : "♪ 这首歌没找到歌词";
-          ly.style.opacity = "0.7";
-        }
-      }
-      if (lyP) lyP.textContent = m.lyric_prev || "";
-      if (lyN) lyN.textContent = m.lyric_next || "";
+      renderPv(m);
     }
 
     // 音量（后端可能给 {ok,percent,mute} 也可能直接给数字，统一归一化）
@@ -506,6 +553,180 @@
     const mb = $("muMute");
     if (mb) mb.textContent = mute || (vOk && v === 0) ? "🔇" : (!vOk || v < 40 ? "🔉" : "🔊");
   }
+
+  // ================= 歌词 PV =================
+  // 整首歌词一次性从 /api/lyrics 取（只读后端缓存，不会等网络），
+  // 之后完全靠本地 position 自己算当前句、自己滚动、自己做卡拉OK 填充。
+  let pvLines = [];        // [[秒, 文本], ...]
+  let pvKey = "";          // 当前歌的 key，换歌才重取
+  let pvIdx = -1;          // 当前句索引
+  let pvEls = [];          // 对应的 DOM 行
+  let pvFetching = false;
+  let pvTimer = 0;         // 后台还没查到时的重试定时器
+  let pvTries = 0;         // 换歌后最多重取几次，避免空转
+  let pvBase = { pos: 0, at: 0, playing: false };  // 进度基准（轮询点 + 本地上次同步时刻）
+
+  function pvSongKey(m) {
+    return [m.title || "", m.artist || "", Math.round((m.duration || 0) / 3)].join("|");
+  }
+
+  async function fetchPv(wantKey) {
+    if (pvFetching) return;
+    pvFetching = true;
+    try {
+      const r = await fetch("/api/lyrics", { cache: "no-store" });
+      if (!r.ok) return;
+      const d = await r.json();
+      // 取的过程中可能换歌了：key 对不上就丢掉，别把上一首的词贴到新歌上
+      if (wantKey !== pvKey) return;
+      if (d.lines && d.lines.length) {
+        pvLines = d.lines;
+        buildPvDom();
+        // 拿到词立刻把提示藏掉并定位当前句（截图模式下后面不会再轮询了）
+        const hp = $("muPvHint");
+        if (hp) hp.style.display = "none";
+        tickPv();
+      }
+    } catch (e) { /* 静默 */ }
+    finally { pvFetching = false; }
+  }
+
+  function buildPvDom() {
+    const track = $("muPvTrack");
+    if (!track) return;
+    track.innerHTML = pvLines
+      .map((ln, i) => `<div class="pv-line" data-i="${i}">${esc(ln[1])}</div>`)
+      .join("");
+    pvEls = Array.from(track.querySelectorAll(".pv-line"));
+    pvIdx = -1;
+    centerPv(-1, true);
+  }
+
+  // 把当前句滚到可视区中间：track 上移「当前行中心 - 舞台中心」
+  // idx<0（还没唱到第一句）就把第一句顶到中间偏下，别让整块空着
+  let pvCenterT = 0;
+  function pvCurY(track) {
+    const m = /translate3d\(\s*[-\d.]+px\s*,\s*(-?[\d.]+)px/.exec(track.style.transform || "");
+    return m ? -parseFloat(m[1]) : 0;
+  }
+  function centerPv(idx, instant) {
+    const track = $("muPvTrack");
+    const stage = $("muPvStage");
+    if (!track || !stage) return;
+    const el = pvEls[idx >= 0 ? idx : 0];
+    if (!el) return;
+    const y = el.offsetTop + el.offsetHeight / 2 - stage.clientHeight / 2;
+    track.style.transition = instant ? "none" : "";
+    track.style.transform = `translate3d(0,${-y}px,0)`;
+    if (instant) requestAnimationFrame(() => { track.style.transition = ""; });
+    // 字号是 0.4s 过渡的，触发瞬间量到的高度还是旧值 → 等它稳定后按实测矩形再校一次
+    clearTimeout(pvCenterT);
+    pvCenterT = setTimeout(() => {
+      const st2 = $("muPvStage"), tr2 = $("muPvTrack");
+      if (!st2 || !tr2 || pvIdx !== idx) return;
+      const el2 = pvEls[idx >= 0 ? idx : 0];
+      if (!el2) return;
+      const r = el2.getBoundingClientRect();
+      const s = st2.getBoundingClientRect();
+      const d = (r.top + r.height / 2) - (s.top + s.height / 2);
+      const y2 = pvCurY(tr2) + d;   // 偏下(d>0)就继续往上滚，偏上就退回来
+      tr2.style.transition = "none";
+      tr2.style.transform = `translate3d(0,${-y2}px,0)`;
+      requestAnimationFrame(() => { tr2.style.transition = ""; });
+    }, 470);
+  }
+
+  function renderPv(m) {
+    const hint = $("muPvHint");
+    // 进度基准每轮都先记下：歌词可能是几秒后才由后台线程补齐的，
+    // 那时也要能立刻知道「现在唱到第几句」，不能只有早退分支之外的路径才更新
+    pvBase = {
+      pos: m.position || 0,
+      at: performance.now(),
+      playing: !!m.playing,
+    };
+    const key = pvSongKey(m);
+    if (key !== pvKey) {
+      pvKey = key;
+      pvLines = [];
+      pvEls = [];
+      pvIdx = -1;
+      pvTries = 0;
+      const track = $("muPvTrack");
+      if (track) track.innerHTML = "";
+      fetchPv(key);
+    }
+    // 后端还没吐出歌词：给个轻提示，别留一片黑（后台在查，隔一会再来拿）
+    if (!pvLines.length) {
+      if (hint) {
+        hint.style.display = "block";
+        hint.textContent = m.has_lyric ? "♪ 正在取歌词…" : "♪ 这首歌没找到歌词";
+      }
+      // 后端在后台查（首次约 1~8s），这里限次重取，别一直空转
+      if (!pvTimer && pvTries < 8) {
+        pvTimer = setTimeout(() => {
+          pvTimer = 0;
+          pvTries++;
+          fetchPv(key);
+        }, 2200);
+      }
+      return;
+    }
+    if (hint) hint.style.display = "none";
+    tickPv();
+  }
+
+  // 本地推算当前进度：播放中按经过时间外推，暂停就停在基准上。
+  // 后端 1.5s 才给一次，直接用会让整句切换一顿一顿的，这里补上平滑。
+  function pvNow() {
+    if (!pvBase.playing) return pvBase.pos;
+    return pvBase.pos + (performance.now() - pvBase.at) / 1000;
+  }
+
+  function updatePvIndex() {
+    if (!pvLines.length) return;
+    const pos = pvNow();
+    let idx = -1;
+    for (let i = 0; i < pvLines.length; i++) {
+      if (pvLines[i][0] <= pos + 0.12) idx = i; else break;
+    }
+    if (idx === pvIdx) return;
+    const old = pvIdx;
+    pvIdx = idx;
+    pvEls.forEach((el, i) => {
+      const d = idx < 0 ? 9 : Math.abs(i - idx);
+      el.classList.toggle("act", i === idx);
+      // 逐行写 inline：CSS 里 calc/var 在 background-clip:text 上会打架
+      if (i === idx) {
+        el.style.fontSize = "";
+        el.style.opacity = "";
+        el.style.color = "";
+      } else {
+        const size = Math.max(13, 18 - d * 0.9);
+        const op = Math.max(0.12, 0.52 - d * 0.1);
+        el.style.fontSize = size.toFixed(1) + "px";
+        el.style.opacity = String(op);
+        el.style.color = "";
+      }
+    });
+    const cur = pvEls[idx];
+    if (cur) {
+      // 这句唱多久 = 下一句开始 - 这句开始，夹在 1.6~6s，避免一句挂太久
+      const t0 = pvLines[idx][0];
+      const t1 = (pvLines[idx + 1] && pvLines[idx + 1][0]) || t0 + 4;
+      let d = t1 - t0;
+      if (!isFinite(d) || d <= 0) d = 4;
+      d = Math.max(1.6, Math.min(6, d));
+      cur.style.setProperty("--dur", d + "s");
+      cur.style.animation = "none";   // 换句才重放填充动画
+      void cur.offsetWidth;
+      cur.style.animation = "";
+    }
+    centerPv(idx, old === -1);
+  }
+
+  function tickPv() { updatePvIndex(); tickWave(); }
+
 
   async function mediaControl(action) {
     try {
@@ -1071,7 +1292,7 @@
 
   // ---------------- 调试：把关键元素矩形打进 DOM（?debug=1，配 chrome --dump-dom 用） ----------------
   function dumpRects() {
-    const ids = ["canvas", "head", "chart", "netChart", "netPeak", "muEq", "muLyric",
+    const ids = ["canvas", "head", "chart", "netChart", "netPeak", "muEq", "muPvStage",
                  "tempList", "diskList", "dock", "uptime", "muBody", "fcList", "wxCol",
                  "clock", "quote", "quoteText", "quoteFrom", "date", "histList"];
     const out = {};
@@ -1108,10 +1329,44 @@
     }
     const fcEl = $("fcList");
     if (fcEl) {
+      out["fc:items"] = [...fcEl.children].map((li) => {
+        const r = li.getBoundingClientRect();
+        const d = li.querySelector(".fc-day"), ic = li.querySelector(".fc-ico"), t = li.querySelector(".fc-tmp");
+        const rr = (e) => { if (!e) return null; const b = e.getBoundingClientRect(); return [Math.round(b.x), Math.round(b.y), Math.round(b.width), Math.round(b.height)]; };
+        return { txt: li.textContent.trim().slice(0, 16), box: [Math.round(r.x), Math.round(r.y), Math.round(r.width), Math.round(r.height)], day: rr(d), ico: rr(ic), tmp: rr(t) };
+      });
       out["fc:count"] = fcEl.children.length;
       out["fc:scrollH"] = fcEl.scrollHeight;
       const lastKid = fcEl.lastElementChild;
       if (lastKid) out["fc:lastBottom"] = Math.round(fcEl.getBoundingClientRect().bottom - lastKid.getBoundingClientRect().bottom);
+    }
+    const wvEl = $("muWave");
+    if (wvEl) {
+      const b = wvEl.getBoundingClientRect();
+      const f = wvEl.querySelector(".wv-fill");
+      out["wv:box"] = [Math.round(b.x), Math.round(b.y), Math.round(b.width), Math.round(b.height)];
+      out["wv:len"] = Math.round(wvLen);
+      out["wv:dash"] = f ? f.style.strokeDashoffset : null;
+      out["wv:on"] = wvEl.classList.contains("on");
+    }
+    const pvT = $("muPvTrack");
+    if (pvT) {
+      const st = $("muPvStage");
+      out["pv:track"] = [Math.round(pvT.getBoundingClientRect().x), Math.round(pvT.getBoundingClientRect().y),
+                         Math.round(pvT.getBoundingClientRect().width), Math.round(pvT.getBoundingClientRect().height)];
+      out["pv:stageH"] = st ? st.clientHeight : null;
+      out["pv:idx"] = pvIdx;
+      out["pv:count"] = pvEls.length;
+      out["pv:items"] = pvEls.slice(Math.max(0, pvIdx - 2), pvIdx + 5).map((el, k) => {
+        const b = el.getBoundingClientRect();
+        const cs = getComputedStyle(el);
+        return {
+          i: Math.max(0, pvIdx - 2) + k,
+          txt: el.textContent.slice(0, 12),
+          box: [Math.round(b.x), Math.round(b.y), Math.round(b.width), Math.round(b.height)],
+          fs: cs.fontSize, op: cs.opacity, col: cs.color, act: el.classList.contains("act"),
+        };
+      });
     }
     const pre = document.createElement("pre");
     pre.id = "dbg";
@@ -1141,6 +1396,8 @@
     }
     connect();
     setInterval(pollMedia, 1500);
+    // 本地 100ms 推一次歌词进度，让换句踩在拍子上（后端 1.5s 一次太粗）
+    setInterval(() => { if (!document.hidden) tickPv(); }, 100);
     if (QUERY.has("debug")) setTimeout(dumpRects, 1500);
   }
 

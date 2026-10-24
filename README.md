@@ -2,7 +2,7 @@
 
 > 一块闲置的竖屏，变成桌面上最顺眼的硬件仪表盘。
 
-![version](https://img.shields.io/badge/version-1.1.4-4fd1c5)
+![version](https://img.shields.io/badge/version-1.2.0-4fd1c5)
 ![platform](https://img.shields.io/badge/platform-Windows%2010%20%7C%2011-5b9dff)
 ![python](https://img.shields.io/badge/python-3.9%2B-9a7dff)
 ![license](https://img.shields.io/badge/license-MIT-57d98a)
@@ -32,11 +32,11 @@
 | **CPU** | 占用率圆环、温度、频率、电压、功耗、用户/系统/IO 占比、16 核逐核占用 |
 | **GPU** | 占用率圆环、温度、频率、功耗、显存占用条、热点温度、显存负载、核心电压、核心/显存/编码/解码利用率 |
 | **性能监控** | CPU / GPU / 内存 三条 60 点滚动折线 |
-| **网络 + 天气** | 左半：SSID、适配器、连接类型、频段信道、IPv4/IPv6、收发速率、信号强度、**下载速度折线**；右半上半：**今日天气 + 七天预报**（图标 / 高低温 / 降水概率），右半下半：**邮箱快捷方式**（163 / 126 / Outlook / Gmail 四宫格，点一下开新标签） |
+| **网络 + 天气** | 左半：SSID、适配器、连接类型、频段信道、IPv4/IPv6、收发速率、信号强度、**下载速度折线**；右半上半：**今日天气 + 七天预报**（竖排七列：日期名 / 日期 / 图标 / 高低温，把空间用满），右半下半：**邮箱快捷方式**（163 / 126 / Outlook / Gmail 四宫格，点一下开新标签） |
 | **内存** | 已用/可用/已缓存/已提交/分页池/非分页 + 内存条规格（型号/频率/插槽） |
 | **温度监控** | CPU、GPU、**风扇 1 / 风扇 2 转速**（主板 SuperIO 读不到时显示 `--`） |
 | **存储** | 每块盘一张卡：占用条、已用/总量、剩余、**活动时间、平均响应、读写速度**、物理盘号 |
-| **音乐播放器** | 播放/暂停/上一首/下一首、系统音量、歌名歌手、**三行滚动歌词**、待机频谱 |
+| **音乐播放器** | 播放/暂停/上一首/下一首、系统音量、歌名歌手、**整首歌词滚动 PV**（当前句放大 + 逐字高亮）、**Material 3 波浪进度条**、待机频谱 |
 | **快捷启动 Dock** | 点击即启动应用，悬停显示名称气泡，图标/名称/路径/顺序**全部可自定义** |
 
 配套还带一个**托盘程序兼设置程序**，解决"全屏 kiosk 退不出来"的经典问题，
@@ -58,7 +58,7 @@
 静默安装（给批处理/部署用）：
 
 ```bat
-GlancePad-Setup-1.1.4.exe /VERYSILENT /DIR=D:\GlancePad /TASKS=desktopicon,startmenu
+GlancePad-Setup-1.2.0.exe /VERYSILENT /DIR=D:\GlancePad /TASKS=desktopicon,startmenu
 ```
 
 卸载走「设置 → 应用」或开始菜单里的「卸载 副屏监控 · GlancePad」，会顺手停掉监控进程。
@@ -288,7 +288,7 @@ glancepad/
 ├─ install.ps1             安装/卸载：复制到安装目录 + 桌面快捷方式 + 可选开机自启
 ├─ app.py                  Flask 服务（8770）
 │                            /  /api/snapshot  /api/stream(SSE)  /api/sources
-│                            /api/media  /api/media/control  /api/media/volume
+│                            /api/media  /api/lyrics  /api/media/control  /api/media/volume
 │                            /api/apps  /api/apps/version  /api/launch  /api/settings
 │                            /api/screens  /api/theme  /api/theme.css  /api/files
 │                            /fonts/<name>  /backgrounds/<name>
