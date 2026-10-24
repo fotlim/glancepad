@@ -106,6 +106,32 @@ powershell -Command "$e=$null; [System.Management.Automation.Language.Parser]::P
 11. **`psutil.cpu_times_percent()` 首次调用恒为 0**
     而且和 `cpu_percent()` 共用内部基准会互相干扰。自己用 `cpu_times()` 差分算。
 
+12. **embeddable Python 没有 tkinter，漏了安装包就装不活**
+    官方 embeddable 是精简版：既没有 `tkinter`，也没有 pip。而 `launcher.pyw` 一上来就
+    `import tkinter`，用的是 `pythonw.exe`（无控制台），错误只落进 `launcher.err.log`，
+    用户看到的就是「双击没反应 / 右键设置打不开」（v1.2.1 的真实故障）。
+    要补五样：`_tkinter.pyd`、`tk86t.dll`、`tcl86t.dll`、`Lib\tkinter`、`tcl\`；
+    而且 **`python311._pth` 里必须加一行 `Lib`** —— embeddable 的 `sys.path` 不含 `Lib`，
+    光拷文件仍然 `import` 不到。
+    别手工拼，直接跑 `tools/make_embed_python.ps1`（自带版本一致性校验 + 装完真开 Tk 窗口自检）。
+
+## 打包安装包
+
+```powershell
+# 1) 组装运行时（tkinter + 全部依赖都会装好并自检）
+.\tools\make_embed_python.ps1 -PyEmbedZip "$env:TEMP\pyembed.zip" `
+    -DonorPython "$env:LOCALAPPDATA\Programs\Python\Python311" `
+    -Target "$env:TEMP\gp_build\python" -Requirements .\requirements.txt
+
+# 2) 同步产物代码到 gp_build\app\（app.py / launcher.pyw / static / sensors / VERSION …）
+
+# 3) 改 glancepad.iss 里的 AppVersion，再编译
+& "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" "$env:TEMP\gp_build\glancepad.iss"
+
+# 4) 一定要静默装到临时目录验一遍，别只看「编译成功」
+#    重点验证：python\Lib\tkinter\ttk.py 存在、python311._pth 含 Lib、能真开一个 Tk 窗口
+```
+
 ## 想加新数据源
 
 在 `sensors/` 下新建模块，实现：

@@ -3,6 +3,32 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.2.2] - 2026-10-24
+
+修复一个**让安装包整体装不活**的严重问题：1.2.1 及更早的安装包里，随包的 Python
+运行时是官方 embeddable 精简版，**不含 tkinter**，而托盘程序和设置窗口全靠它。
+
+### 修复
+
+- **装完双击没反应 / 右键「设置…」打不开**：`launcher.pyw` 一启动就
+  `import tkinter`，缺了直接抛 `ModuleNotFoundError`；因为用的是 `pythonw.exe`
+  （无控制台），错误只写进 `launcher.err.log`，用户侧看到的就是「双击了没动静」。
+  安装包现已补齐 `_tkinter.pyd`、`tk86t.dll`、`tcl86t.dll`、`Lib\tkinter`、`tcl\`，
+  并在 `python311._pth` 里补上 `Lib` 与 `Lib\site-packages`——embeddable 的
+  `sys.path` 默认不含 `Lib`，光拷文件仍然 `import` 不到。
+- **补齐依赖**：运行时现在由 `tools/make_embed_python.ps1` 用同版本 Python 的 pip
+  按 `requirements.txt` 装齐（Flask / psutil / requests / Pillow / pystray / winsdk /
+  pycaw / comtypes），不再手工拼装，避免漏包。
+- **失败时给一句人话**：`launcher.pyw` 现在捕获 `ModuleNotFoundError: tkinter`，
+  弹 MessageBox 说明「缺少图形界面组件，请重新下载最新安装包」，而不是静默退出。
+
+### 新增
+
+- `tools/make_embed_python.ps1`：一键组装带 tkinter 的自包含 Python 运行时，
+  含版本一致性校验（比对 embeddable 与 donor 的 `python311.dll` FileVersion，
+  不一致直接报错——版本错配会让 `_tkinter.pyd` 加载崩溃）与装完自检
+  （真开一个 Tk 窗口 + 导入全部依赖）。
+
 ## [1.2.1] - 2026-10-24
 
 波浪进度条真的会流动了，今日天气把右半边的空白填满、气温放大一倍。

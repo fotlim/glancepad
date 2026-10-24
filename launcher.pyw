@@ -1177,10 +1177,35 @@ def main():
     root.mainloop()
 
 
+def _explain_tk_missing():
+    """tkinter 缺失时，pythonw 下是彻底静默的——用户只看到「双击没反应」。
+
+    这里给一句人话，而不是把 traceback 吞进日志就完事。
+    """
+    msg = ("副屏监控：这个安装缺少图形界面组件（tkinter），设置窗口打不开。\n\n"
+           "请重新下载最新安装包覆盖安装，或把下面这条报错发给作者：\n"
+           "No module named 'tkinter'")
+    try:
+        import ctypes
+        ctypes.windll.user32.MessageBoxW(None, msg, "副屏监控 · 启动失败", 0x10)
+        return
+    except Exception:
+        pass
+    try:
+        print(msg)
+    except Exception:
+        pass
+
+
 if __name__ == "__main__":
     try:
         main()
-    except Exception:
+    except Exception as e:
         import traceback
         logerr("fatal:\n" + traceback.format_exc())
+        # pythonw 没有控制台，缺 tkinter 时用户只会看到「双击没反应」，
+        # 所以补一个对话框把话说清楚。
+        if isinstance(e, ModuleNotFoundError) and \
+                (getattr(e, "name", "") or "").startswith("tkinter"):
+            _explain_tk_missing()
         raise
