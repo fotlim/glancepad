@@ -438,19 +438,27 @@
   // ---- 波浪进度条（Material 3 Wavy 风格）----
   // 一条正弦波浪当轨道：底下一根暗的走满全程，上面一根亮的用 dash 只画到进度处。
   // 用 getTotalLength + dashoffset 而不是裁剪矩形，这样进度末端刚好停在波峰波谷上，不会切出直角。
-  let wvLen = 0, wvW = 0, wvDur = 0;
+  let wvW = 0, wvDur = 0, wvPeriod = 68;
+  // 波形「流动」由 JS 定时平移完成：CSS 的 @keyframes 作用在 SVG <g> 上实测屏上纹丝不动，
+  // SMIL 又不好和播放/暂停状态同步，干脆自己写 transform，想停就停、想快就快。
+  let wvTimer = 0, wvT0 = 0;
   function buildWave() {
     const box = $("muWave");
     if (!box) return;
     const w = Math.max(60, Math.round(box.clientWidth || 400));
-    // 注意：设计稿 864 宽会被缩到 0.398 倍，所以这里的「振幅 7px」到屏上只有 2.8px，
-    // 振幅必须给大些（7）才看得出波浪；高度 26 同理。
+    // 注意：设计稿 864 宽会被缩到 0.398 倍，所以这里的「振幅 9px」到屏上只有 3.6px，
+    // 振幅必须给大些才看得出波浪；高度 32 同理。
     const h = 32, amp = 9, step = 34;
-    wvW = w;
-    let d = `M0 ${h / 2}`;
-    for (let x = 0, up = true; x < w; x += step, up = !up) {
-      // 二次贝塞尔交替上下，圆心在 h/2，控制点高度随 up 翻
-      d += ` Q${x + step / 2} ${up ? h / 2 - amp : h / 2 + amp} ${Math.min(x + step, w)} ${h / 2}`;
+    const period = step * 2;      // 一个完整周期 = 上+下两个 Q 段
+    wvW = w; wvPeriod = period;
+    box.style.setProperty("--wv-period", `${period}px`);
+    // 波形左右各多画两个周期：这样整体平移一个周期时两端永远有内容，
+    // 循环接缝看不出来（这是「波浪会流动」的关键，只靠 ±3px 平移是看不出的）。
+    const x0 = -period * 2, x1 = w + period * 2;
+    let d = `M${x0} ${h / 2}`;
+    for (let x = x0, up = true; x < x1; x += step, up = !up) {
+      // 二次贝塞尔交替上下，中线在 h/2，控制点高度随 up 翻
+      d += ` Q${(x + step / 2).toFixed(1)} ${up ? h / 2 - amp : h / 2 + amp} ${Math.min(x + step, x1)} ${h / 2}`;
     }
     box.innerHTML =
       `<svg viewBox="0 0 ${w} ${h}" width="100%" height="${h}" preserveAspectRatio="none">` +
@@ -460,29 +468,56 @@
       `<stop offset="0%" stop-color="#ff7a9c"/>` +
       `<stop offset="55%" stop-color="#c792ff"/>` +
       `<stop offset="100%" stop-color="#9a7dff"/>` +
-      `</linearGradient></defs>` +
-      `<path class="wv-base" d="${d}" vector-effect="non-scaling-stroke"/>` +
-      `<path class="wv-fill" d="${d}" vector-effect="non-scaling-stroke"/>` +
+      `</linearGradient>` +
+      // 进度用「裁剪矩形」而不是 dash：dash 的端点会跟着平移一起动，
+      // 前进边界就跟着抖；裁剪框固定不动，波形在框里自己流动，两者互不干扰。
+      `<clipPath id="muWaveClip" clipPathUnits="userSpaceOnUse">` +
+      `<rect id="muWaveClipRect" x="0" y="0" width="0" height="${h}"/></clipPath></defs>` +
+      `<g class="wv-move"><path class="wv-base" d="${d}" vector-effect="non-scaling-stroke"/></g>` +
+      `<g clip-path="url(#muWaveClip)"><g class="wv-move">` +
+      `<path class="wv-fill" d="${d}" vector-effect="non-scaling-stroke"/></g></g>` +
       `</svg>`;
-    const f = box.querySelector(".wv-fill");
-    if (f) {
-      wvLen = f.getTotalLength() || 0;
-      f.style.strokeDasharray = `${wvLen} ${wvLen}`;
-      f.style.strokeDashoffset = String(wvLen);
-    }
   }
   function setWave(pct, playing, total) {
     const box = $("muWave");
     if (!box) return;
     if (total !== undefined) wvDur = total;
-    if (!wvLen || Math.round(box.clientWidth || 0) !== wvW) buildWave();
-    const f = box.querySelector(".wv-fill");
-    if (f && wvLen) {
+    if (!wvW || Math.round(box.clientWidth || 0) !== wvW) buildWave();
+    const rect = $("muWaveClipRect");
+    if (rect) {
       const p = Math.max(0, Math.min(1, (pct || 0) / 100));
-      f.style.strokeDashoffset = String(wvLen * (1 - p));
+      const v = `${(wvW * p).toFixed(1)}px`;
+      rect.setAttribute("width", v);   // 供 dumpRects 读
+      rect.style.width = v;            // 走 CSS 才能吃到 transition，进度边界滑得顺
     }
     box.classList.toggle("on", !!playing);
     box.classList.toggle("idle", !playing);
+    setWaveRun(!!playing);
+  }
+  // 波形流动：每帧把两个 <g class="wv-move"> 往左推，推满一个周期就回绕到 0。
+  // 因为波形左右各多画了两个周期，回绕那一刻画面完全一样，看不出接缝。
+  // 用 setInterval 而不是 requestAnimationFrame：rAF 在后台/被节流的环境下会整个停掉，
+  // 实测在无头 Chrome 里 rAF 一帧都不走（transform 卡死在同一个值），setInterval 稳。
+  function setWaveRun(play) {
+    const box = $("muWave");
+    if (!box) return;
+    if (!play) {
+      if (wvTimer) { clearInterval(wvTimer); wvTimer = 0; }
+      return;
+    }
+    if (wvTimer) return;                 // 已经在跑
+    if (!wvT0) wvT0 = performance.now();
+    wvTimer = setInterval(() => {
+      // 每次现查节点：buildWave() 会重建 SVG，缓存的引用会变成游离节点
+      const gs = box.querySelectorAll(".wv-move");
+      if (!gs.length) return;
+      const P = wvPeriod || 68;
+      const t = (performance.now() - wvT0) / 1000;
+      const off = (t * (P / 1.55)) % P;    // 1.55s 走完一个周期
+      for (let i = 0; i < gs.length; i++) {
+        gs[i].setAttribute("transform", `translate(${(-off).toFixed(2)} 0)`);
+      }
+    }, 70);
   }
   // 100ms 的本地小 tick 顺带把波浪往前推一点，别让进度条一格一格跳
   function tickWave() {
@@ -1343,11 +1378,17 @@
     const wvEl = $("muWave");
     if (wvEl) {
       const b = wvEl.getBoundingClientRect();
-      const f = wvEl.querySelector(".wv-fill");
+      const cr = $("muWaveClipRect");
+      const mv = wvEl.querySelector(".wv-move");
       out["wv:box"] = [Math.round(b.x), Math.round(b.y), Math.round(b.width), Math.round(b.height)];
-      out["wv:len"] = Math.round(wvLen);
-      out["wv:dash"] = f ? f.style.strokeDashoffset : null;
+      out["wv:clipW"] = cr ? Math.round(parseFloat(cr.getAttribute("width") || "0")) : null;
+      out["wv:period"] = wvPeriod;
       out["wv:on"] = wvEl.classList.contains("on");
+      if (mv) {
+        // 现在流动是 JS 每帧写 transform 属性，直接读属性最准
+        out["wv:tf"] = mv.getAttribute("transform") || "none";
+        out["wv:raf"] = wvTimer ? 1 : 0;
+      }
     }
     const pvT = $("muPvTrack");
     if (pvT) {

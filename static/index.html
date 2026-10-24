@@ -179,19 +179,23 @@
             <div class="wx-today-main">
               <span class="wx-icon" id="wxIcon">🌡️</span>
               <span class="wx-temp"><b id="wxTemp">--</b><i>°C</i></span>
+            </div>
+            <!-- 右侧竖排：天气文字 / 高低温 / 城市湿度风速空气质量。
+                 原来这行横贯整卡，右侧一大片是空的；挪成竖列后把空旷区填满。 -->
+            <div class="wx-side">
               <div class="wx-today-txt">
                 <span class="wx-text" id="wxText">--</span>
                 <span class="wx-range" id="wxRange">--/--</span>
               </div>
-            </div>
-            <div class="wx-sub">
-              <span id="wxCity">--</span>
-              <span class="wx-sep">·</span>
-              <span id="wxHum">湿度 --</span>
-              <span class="wx-sep">·</span>
-              <span id="wxWind">风 --</span>
-              <span class="wx-sep" id="wxAqiSep" style="display:none">·</span>
-              <span id="wxAqi" style="display:none">AQI --</span>
+              <div class="wx-sub">
+                <span id="wxCity">--</span>
+                <span class="wx-sep">·</span>
+                <span id="wxHum">湿度 --</span>
+                <span class="wx-sep">·</span>
+                <span id="wxWind">风 --</span>
+                <span class="wx-sep" id="wxAqiSep" style="display:none">·</span>
+                <span id="wxAqi" style="display:none">AQI --</span>
+              </div>
             </div>
             <div class="wx-alarm" id="wxAlarm" style="display:none"></div>
           </div>

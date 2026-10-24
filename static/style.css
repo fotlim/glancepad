@@ -636,26 +636,42 @@ body.landscape .hist-list li:nth-child(n+5){display:none;}
 .kv-list li.sig-li .v{display:flex;justify-content:flex-start;align-items:center;gap:6px;}
 .kv-list .v.small{font-size:11px;color:var(--text-dim);}
 
-/* 今日天气 */
+/* 今日天气：左边一大块「图标 + 当前气温」，右边竖着排天气状况/高低温/城市湿度风/AQI。
+   原来是「图标+气温+状况」一行，再把城市湿度风速那行横着铺满整条卡片，
+   右侧一大片是空的；改成两列之后整块区域的横向空间都用上了，气温也能放得更大。 */
 .wx-today{
-  display:flex;flex-direction:column;gap:5px;
+  display:grid;
+  grid-template-columns:auto minmax(0,1fr);
+  grid-template-areas:
+    "main side"
+    "alarm alarm";
+  align-items:center;
+  column-gap:12px;
+  row-gap:3px;
   min-height:0;
 }
 .wx-today-main{
+  grid-area:main;
   display:flex;align-items:center;gap:9px;
   font-variant-numeric:tabular-nums;
 }
+.wx-side{
+  grid-area:side;
+  display:flex;flex-direction:column;justify-content:center;align-items:stretch;gap:4px;
+  min-width:0;
+}
 .wx-icon{font-size:30px;line-height:1;flex:0 0 auto;
   filter:drop-shadow(0 0 12px rgba(255,200,120,0.4));}
-.wx-temp{flex:0 0 auto;}
+.wx-temp{flex:0 0 auto;display:flex;align-items:baseline;}
 .wx-temp b{font-size:32px;font-weight:700;line-height:1;}
 .wx-temp i{font-style:normal;font-size:13px;color:var(--text-dim);margin-left:1px;}
-.wx-today-txt{display:flex;flex-direction:column;gap:2px;min-width:0;}
-.wx-text{font-size:13.5px;color:var(--text-dim);letter-spacing:.5px;}
-.wx-range{font-size:11.5px;color:var(--text-mute);font-variant-numeric:tabular-nums;}
+.wx-today-txt{display:flex;align-items:baseline;gap:7px;min-width:0;}
+.wx-text{font-size:13.5px;color:var(--text-dim);letter-spacing:.5px;white-space:nowrap;}
+.wx-range{font-size:11.5px;color:var(--text-mute);font-variant-numeric:tabular-nums;white-space:nowrap;}
 .wx-sub{
   font-size:11px;color:var(--text-mute);
   display:flex;align-items:center;gap:5px;flex-wrap:wrap;
+  min-width:0;
 }
 .wx-sep{color:rgba(255,255,255,0.18);}
 /* 气象预警（中国天气网有，open-meteo 没有）：单行省略，别把 wx-col 撑乱 */
@@ -695,7 +711,8 @@ body.landscape .hist-list li:nth-child(n+5){display:none;}
 /* ---- 天气压缩：右栏要腾出下半截给邮箱，天气只剩约 60% 高度。
         图标 / 气温 / 说明文字降一档，七天预报行高也压实，
         保证 7 行仍能完整放下不被裁。 ---- */
-.wx-weather .wx-today{gap:2px;}
+.wx-weather .wx-today{gap:3px;row-gap:3px;column-gap:10px;}
+.wx-weather .wx-alarm{grid-area:alarm;}
 .wx-weather .wx-today-main{gap:6px;}
 .wx-weather .wx-icon{font-size:20px;filter:drop-shadow(0 0 8px rgba(255,200,120,0.35));}
 .wx-weather .wx-temp b{font-size:22px;}
@@ -755,6 +772,24 @@ body.portrait .wx-weather .fc-list .fc-tmp{
 }
 body.portrait .wx-weather .fc-list .fc-tmp b{font-size:15px;line-height:1.1;text-shadow:0 1px 2px rgba(0,0,0,.45);}
 body.portrait .wx-weather .fc-list .fc-tmp i{display:none;}
+
+/* 竖屏专属：今日天气放大一档（这块高度富余，之前气温只有 22px 太小，右半边又是空的） */
+body.portrait .wx-weather .wx-today{column-gap:16px;row-gap:5px;align-items:center;}
+body.portrait .wx-weather .wx-icon{font-size:36px;}
+body.portrait .wx-weather .wx-temp b{font-size:52px;letter-spacing:-1px;text-shadow:0 2px 8px rgba(0,0,0,.5);}
+body.portrait .wx-weather .wx-temp i{font-size:16px;margin-left:2px;}
+body.portrait .wx-weather .wx-today-txt{gap:9px;}
+body.portrait .wx-weather .wx-text{font-size:16px;color:var(--text);letter-spacing:.5px;font-weight:600;}
+body.portrait .wx-weather .wx-range{font-size:13px;color:var(--text-dim);}
+body.portrait .wx-weather .wx-sub{
+  display:grid;grid-template-columns:repeat(4,auto);
+  justify-content:space-between;align-items:center;column-gap:10px;
+  font-size:13px;line-height:1.4;color:var(--text-dim);
+}
+/* 竖屏下这行铺满整条卡片宽度（space-between 把 4 项均匀摊开），
+   原来挤在左边、右边空一大片；分隔点「·」在网格里没意义，直接藏掉。 */
+body.portrait .wx-weather .wx-sub .wx-sep{display:none;}
+body.portrait .wx-weather .wx-alarm{font-size:11px;}
 
 /* 下载速度折线图（现在与 WiFi 列表左右并排，高度跟着行高走，不再用百分比） */
 .net-chart-wrap{
@@ -893,28 +928,25 @@ body.portrait .wx-weather .fc-list .fc-tmp i{display:none;}
   overflow:hidden;
 }
 .mu-wave svg{display:block;width:100%;height:100%;overflow:visible;}
+/* 进度裁剪框：宽度由 JS 按百分比写，补个过渡免得一格一格跳 */
+.mu-wave #muWaveClipRect{transition:width .16s linear;}
 /* 底：整条暗波浪 */
 .mu-wave .wv-base{
   fill:none;stroke:rgba(255,255,255,0.30);stroke-width:5.5;
   stroke-linecap:round;stroke-linejoin:round;
 }
-/* 面：亮色波浪，用 dash 假装「只画到进度」，比 clip 省一个节点
-   （dasharray / dashoffset 由 JS 按真实路径长度写，避免 calc 混算 % 出错） */
+/* 面：亮色波浪，靠 #muWaveClipRect 的宽度裁出「已播放」段
+   （裁剪框固定不动，波形在框内流动，进度边界不会被动画带跑） */
 .mu-wave .wv-fill{
   fill:none;stroke:url(#muWaveGrad);stroke-width:6;
   stroke-linecap:round;stroke-linejoin:round;
-  transition:stroke-dashoffset .35s linear;
   filter:drop-shadow(0 0 4px rgba(255,122,156,0.5));
 }
-/* 播放中让波浪自己缓慢起伏，停下就冻住（省 GPU） */
-.mu-wave.on svg{
-  animation:muWaveDrift 3.4s linear infinite alternate;
-}
+/* 播放中让波浪持续向前流动（不是左右晃，是波形整体平移一整个周期再循环），
+   停下就冻住（省 GPU）。实际位移由 app.js 的 setWaveRun() 每帧写 transform，
+   这里只留 CSS 动画做亮度呼吸；transform 交给 JS，避免两条管线打架。 */
+.mu-wave .wv-move{will-change:transform;}
 .mu-wave.on .wv-fill{animation:muWavePulse 2.2s ease-in-out infinite;}
-@keyframes muWaveDrift{
-  from{transform:translateX(-3px);}
-  to{transform:translateX(3px);}
-}
 @keyframes muWavePulse{
   0%,100%{filter:drop-shadow(0 0 3px rgba(255,122,156,0.42));}
   50%{filter:drop-shadow(0 0 7px rgba(255,122,156,0.72));}

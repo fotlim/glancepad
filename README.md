@@ -2,7 +2,7 @@
 
 > 一块闲置的竖屏，变成桌面上最顺眼的硬件仪表盘。
 
-![version](https://img.shields.io/badge/version-1.2.0-4fd1c5)
+![version](https://img.shields.io/badge/version-1.2.1-4fd1c5)
 ![platform](https://img.shields.io/badge/platform-Windows%2010%20%7C%2011-5b9dff)
 ![python](https://img.shields.io/badge/python-3.9%2B-9a7dff)
 ![license](https://img.shields.io/badge/license-MIT-57d98a)
@@ -51,14 +51,14 @@
 从 [Releases](https://github.com/fotlim/glancepad/releases/latest) 下载 `GlancePad-Setup-x.y.z.exe`，
 双击安装即可。安装向导里可以：
 
-- **自定义安装目录**（默认 `C:\Program Files\副屏监控 · GlancePad`）
+- **自定义安装目录**（默认 `D:\GlancePad`）
 - 单独勾选 **开机自启** / **开始菜单快捷方式** / **桌面快捷方式**
 - 安装包**自带 Python 运行时和全部依赖**，目标机器不用预装 Python、不用联网
 
 静默安装（给批处理/部署用）：
 
 ```bat
-GlancePad-Setup-1.2.0.exe /VERYSILENT /DIR=D:\GlancePad /TASKS=desktopicon,startmenu
+GlancePad-Setup-1.2.1.exe /VERYSILENT /DIR=D:\GlancePad /TASKS=desktopicon,startmenu
 ```
 
 卸载走「设置 → 应用」或开始菜单里的「卸载 副屏监控 · GlancePad」，会顺手停掉监控进程。
